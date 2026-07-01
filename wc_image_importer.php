@@ -55,8 +55,10 @@ const CSV_FILE = '';
 
 // What the products are (steers the image prompt) + the look you want.
 const STORE_NICHE = 'High performance engines';
-const IMAGE_STYLE = 'clean professional product photograph on a pure white background, '
-                  . 'studio softbox lighting, sharp focus, high detail, no text, no watermark';
+const IMAGE_STYLE = 'clean professional product photograph of a single isolated product, '
+                  . 'centered and filling the frame on a pure white background, studio softbox '
+                  . 'lighting, sharp focus, high detail, no people, no human faces, no hands, '
+                  . 'no body parts, no text, no watermark';
 
 // ---- Logo watermark (overlays YOUR real logo after generation) -------------
 // The image generator does NOT add your logo — this step does. Use a TRANSPARENT
@@ -163,10 +165,50 @@ function parse_categories($raw) {
     return [$top, $sub];
 }
 
-function build_prompt($name, $top, $sub) {
-    $cat = ($sub ?: $top);
-    $cat = $cat ? " ($cat)" : '';
-    return $name . $cat . ', ' . STORE_NICHE . '. ' . IMAGE_STYLE . '.';
+// Map a form/packaging keyword (found in the unit or description) to an explicit
+// image subject. Ordered specific -> generic; first match wins.
+function form_hint($hay) {
+    $map = [
+        'vial' => 'a single labeled glass vial',
+        'ampoule' => 'a sealed glass ampoule', 'ampule' => 'a sealed glass ampoule',
+        'syringe' => 'a prefilled medical syringe',
+        'capsule' => 'an amber pill bottle filled with capsules',
+        'tablet' => 'a blister strip of tablets', 'blister' => 'a blister strip of tablets',
+        'inhaler' => 'an inhaler device', 'dropper' => 'a dropper bottle',
+        'sachet' => 'a sealed sachet', 'pouch' => 'a resealable pouch',
+        'powder' => 'a sealed jar of powder',
+        'tube' => 'a labeled tube', 'jar' => 'a labeled jar', 'canister' => 'a metal canister',
+        'spray' => 'a spray bottle',
+        'engine' => 'a complete automotive engine', 'motor' => 'a complete motor',
+        'bottle' => 'a labeled bottle',
+        'litre' => 'a labeled liquid container', 'liter' => 'a labeled liquid container',
+    ];
+    foreach ($map as $k => $v) { if (strpos($hay, $k) !== false) { return $v; } }
+    return '';
+}
+
+// Build the image prompt from what the product actually IS:
+// 1) the SEO optimizer's _image_subject  ->  2) _unit_of_sale + short description
+// 3) title + niche (last resort). Always finished with IMAGE_STYLE.
+function build_prompt($pid, $name, $top, $sub) {
+    $subject = trim((string) get_post_meta($pid, '_image_subject', true));
+    if ($subject === '') {
+        $unit  = trim((string) get_post_meta($pid, '_unit_of_sale', true));
+        $short = '';
+        $p = $pid ? wc_get_product($pid) : null;
+        if ($p) { $short = wp_strip_all_tags($p->get_short_description()); }
+        $hint = form_hint(strtolower($unit . ' ' . $short . ' ' . $name . ' ' . $sub . ' ' . $top));
+        $cat  = ($sub ?: $top);
+        $cat  = $cat ? " for $cat" : '';
+        if ($unit !== '') {
+            $subject = "$name$cat, supplied as $unit" . ($hint ? " — shown as $hint" : '');
+        } elseif ($hint !== '') {
+            $subject = "$name$cat, shown as $hint";
+        } else {
+            $subject = "$name$cat, " . STORE_NICHE;
+        }
+    }
+    return $subject . '. ' . IMAGE_STYLE . '.';
 }
 
 function ideogram_image_url($prompt) {
@@ -353,7 +395,7 @@ foreach ($items as $it) {
     }
 
     out("[$i/$total] " . $it['name'] . "  (product $pid)");
-    [$url, $err] = ideogram_image_url(build_prompt($it['name'], $it['top'], $it['sub']));
+    [$url, $err] = ideogram_image_url(build_prompt($pid, $it['name'], $it['top'], $it['sub']));
     if (!$url) { out("   [skip] image failed: $err", '#f66'); continue; }
 
     [$att, $err2] = attach_image_to_product($url, $pid, $it['alt'], $it['name']);

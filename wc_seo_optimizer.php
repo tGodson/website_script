@@ -241,12 +241,14 @@ function extract_json($text) {
     $text = trim((string) $text);
     $text = preg_replace('/^```[a-zA-Z]*\s*/', '', $text);
     $text = preg_replace('/\s*```$/', '', $text);
-    $data = json_decode($text, true);
-    if (is_array($data)) { return $data; }
+    $candidates = [$text];
     $s = strpos($text, '{'); $e = strrpos($text, '}');
-    if ($s !== false && $e !== false && $e > $s) {
-        $data = json_decode(substr($text, $s, $e - $s + 1), true);
-        if (is_array($data)) { return $data; }
+    if ($s !== false && $e !== false && $e > $s) { $candidates[] = substr($text, $s, $e - $s + 1); }
+    foreach ($candidates as $c) {
+        $d = json_decode($c, true);
+        if (is_array($d)) { return $d; }
+        $d = json_decode(preg_replace('/,\s*([}\]])/', '$1', $c), true); // tolerate trailing commas
+        if (is_array($d)) { return $d; }
     }
     return null;
 }
@@ -286,8 +288,9 @@ function compliance_clause() {
 }
 
 function html_quote_rule() {
-    return "In all HTML you produce, use SINGLE quotes for attributes (e.g. <a href='...'>), "
-        . "NEVER double quotes, and escape any double quotes in visible text — this keeps the JSON valid.";
+    return "In all HTML you produce, use SINGLE quotes for attributes (e.g. <a href='...'>), NEVER double "
+        . "quotes. Return ONE valid JSON object only — no markdown, no code fences, no comments, no trailing "
+        . "commas — and put each HTML value on a single line with no raw line breaks inside the string.";
 }
 
 function build_product_prompt($name, $cat_label, $cat_url, $related) {
@@ -328,12 +331,16 @@ function build_product_prompt($name, $cat_label, $cat_url, $related) {
         . "type, INCLUDING the measurement where applicable (mg, ml, g, L, or a count) — e.g. "
         . "'per 10 mg vial', 'per 500 ml bottle', 'per 250 g pack', 'per 5 L container', "
         . "'one complete engine'. Be conservative; if unsure use 'each (1 unit)'.\n"
+        . "- image_subject: a short, literal description of the product's PHYSICAL form and packaging "
+        . "for a product photo — it MUST match the unit above (e.g. 'a single 10 mg amber glass "
+        . "injection vial with a printed label', 'a sealed foil pouch of white powder', 'a blister "
+        . "strip of tablets', 'a complete automotive crate engine'). White background, no text overlays.\n"
         . $variations_req
         . "- " . html_quote_rule() . "\n\n"
         . "Return ONLY a JSON object with EXACTLY these keys (no markdown, no commentary):\n"
         . "{\"short_description\":\"<html>\",\"long_description\":\"<html>\",\"meta_title\":\"...\","
         . "\"meta_description\":\"...\",\"focus_keyword\":\"...\",\"secondary_keywords\":[\"...\"],"
-        . "\"tags\":[\"...\"],\"price\":0,\"unit\":\"...\"" . $variations_json . "}";
+        . "\"tags\":[\"...\"],\"price\":0,\"unit\":\"...\",\"image_subject\":\"...\"" . $variations_json . "}";
 }
 
 function build_category_prompt($name, $parent_name, $is_sub) {
@@ -690,6 +697,8 @@ if (GENERATE_PRODUCT_CONTENT || ADD_INTERLINKS) {
             $short = (string) ($data['short_description'] ?? '');
             $unit  = trim((string) ($data['unit'] ?? ''));
             if ($unit !== '') { update_post_meta($pid, '_unit_of_sale', $unit); }
+            $img_subject = trim((string) ($data['image_subject'] ?? ''));
+            if ($img_subject !== '') { update_post_meta($pid, '_image_subject', $img_subject); }
             if (SHOW_UNIT_OF_SALE && $unit !== '' && stripos($short, 'sold as') === false) {
                 $short .= "\n<p><strong>Sold as:</strong> " . esc_html($unit) . '.</p>';
             }
