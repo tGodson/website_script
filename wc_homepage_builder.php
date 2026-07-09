@@ -203,12 +203,44 @@ function ai_text_claude($prompt) {
     ]);
     if (is_wp_error($resp)) { return [null, $resp->get_error_message()]; }
     $code = wp_remote_retrieve_response_code($resp);
+    $body = wp_remote_retrieve_body($resp);
     if ($code == 429) { return [null, '429']; }
-    if ($code != 200) { return [null, "Claude $code: " . substr(wp_remote_retrieve_body($resp), 0, 180)]; }
-    $j = json_decode(wp_remote_retrieve_body($resp), true);
+    if ($code != 200) {
+        $j = json_decode($body, true);
+        $emsg = $j['error']['message'] ?? substr($body, 0, 200);
+        if (stripos($emsg, 'credit balance') !== false || stripos($emsg, 'billing') !== false) {
+            return [null, "Claude CREDIT/BILLING ($code): $emsg  >>> Top up at console.anthropic.com, "
+                        . "or set AI_PROVIDER = 'gemini' (free) and paste a Gemini key."];
+        }
+        return [null, "Claude HTTP $code: $emsg"];
+    }
+    $j = json_decode($body, true);
+    $stop = $j['stop_reason'] ?? '';
     $text = '';
     foreach (($j['content'] ?? []) as $b) { if (($b['type'] ?? '') === 'text') { $text .= $b['text']; } }
+    if ($text === '') { return [null, "Claude returned no text (stop_reason=$stop)"]; }
     return [$text, ''];
+}
+
+// Escape raw control chars (newlines/tabs) that appear INSIDE JSON string values.
+function json_escape_ctrl_in_strings($s) {
+    $out = ''; $in = false; $esc = false; $len = strlen($s);
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $s[$i];
+        if ($in) {
+            if ($esc) { $out .= $ch; $esc = false; continue; }
+            if ($ch === '\\') { $out .= $ch; $esc = true; continue; }
+            if ($ch === '"') { $in = false; $out .= $ch; continue; }
+            if ($ch === "\n") { $out .= '\\n'; continue; }
+            if ($ch === "\r") { $out .= '\\r'; continue; }
+            if ($ch === "\t") { $out .= '\\t'; continue; }
+            $out .= $ch;
+        } else {
+            if ($ch === '"') { $in = true; }
+            $out .= $ch;
+        }
+    }
+    return $out;
 }
 
 function extract_json($text) {
@@ -219,24 +251,33 @@ function extract_json($text) {
     $s = strpos($text, '{'); $e = strrpos($text, '}');
     if ($s !== false && $e !== false && $e > $s) { $candidates[] = substr($text, $s, $e - $s + 1); }
     foreach ($candidates as $c) {
-        $d = json_decode($c, true);
-        if (is_array($d)) { return $d; }
-        $d = json_decode(preg_replace('/,\s*([}\]])/', '$1', $c), true); // tolerate trailing commas
-        if (is_array($d)) { return $d; }
+        $variants = [
+            $c,
+            preg_replace('/,\s*([}\]])/', '$1', $c),                              // trailing commas
+            json_escape_ctrl_in_strings($c),                                     // raw newlines in strings
+            preg_replace('/,\s*([}\]])/', '$1', json_escape_ctrl_in_strings($c)),
+        ];
+        foreach ($variants as $v) {
+            $d = json_decode($v, true);
+            if (is_array($d)) { return $d; }
+        }
     }
     return null;
 }
 
 function ai_json($prompt) {
+    $last = '';
     for ($attempt = 0; $attempt < 3; $attempt++) {
         ai_throttle();
         [$text, $err] = (AI_PROVIDER === 'gemini') ? ai_text_gemini($prompt) : ai_text_claude($prompt);
         if ($err === '429') { sleep(30 * ($attempt + 1)); continue; }
         if ($err) { return [null, $err]; }
-        $data = extract_json($text);
+        $last = (string) $text;
+        $data = extract_json($last);
         if ($data !== null) { return [$data, '']; }
     }
-    return [null, 'invalid JSON after retries'];
+    $snip = trim(preg_replace('/\s+/', ' ', mb_substr($last, 0, 240)));
+    return [null, 'invalid JSON after 3 tries (' . json_last_error_msg() . '). Model returned: ' . $snip];
 }
 
 // ---------------------------------------------------------------------------
