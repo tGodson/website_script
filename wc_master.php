@@ -38,10 +38,10 @@
 
 // ---- Access (local: no token; public/live: token auto-required) ------------
 const REQUIRE_SECRET = true;                 // live = keep true
-const SECRET = 'change-me-letters-and-numbers-only';   // ?key=THIS  (no # & % symbols)
+const SECRET = '1234';   // ?key=THIS  (no # & % symbols)
 
 // ---- AI provider -----------------------------------------------------------
-const AI_PROVIDER = 'claude';                // 'gemini' (free) or 'claude'
+const AI_PROVIDER = 'claude';                // 'gemini' (free) | 'claude' | 'openai' (ChatGPT)
 const GEMINI_API_KEY = '';                   // https://aistudio.google.com/apikey
 const GEMINI_MODEL   = 'gemini-2.0-flash';
 const GEMINI_RPM     = 10;
@@ -49,6 +49,9 @@ const ANTHROPIC_API_KEY = '';                // https://console.anthropic.com  <
 const CLAUDE_MODEL      = 'claude-haiku-4-5';  // fast + high rate limits, ideal for bulk. (Opus = 'claude-opus-4-8' if you want top quality)
 const CLAUDE_RPM        = 0;                   // 0 = NO throttle (full speed, like the old script — fine for Haiku/Sonnet). Set ~5 ONLY if you use Opus and hit rate limits
 const CLAUDE_MAX_TOKENS = 4096;              // max output tokens per call. Smaller = fewer rate-limit hits; RAISE it if long descriptions get cut off
+const OPENAI_API_KEY = '';                   // https://platform.openai.com/api-keys  <-- paste your ChatGPT key here (AI_PROVIDER='openai')
+const OPENAI_MODEL   = 'gpt-4o-mini';        // 'gpt-4o-mini' = cheap + fast; 'gpt-4o' = higher quality
+const OPENAI_RPM     = 0;                     // 0 = no throttle
 
 // ---- Store identity --------------------------------------------------------
 const BRAND_NAME = '';                        // '' = site title
@@ -60,13 +63,13 @@ const REFERENCE_URL = '';   // OPTIONAL: one URL of a comparable store's product
                             // the AI (which still writes 100% original copy). Leave '' to skip. Best on sites with JSON-LD product data.
 
 // ---- PRODUCT operations: toggle each ON/OFF --------------------------------
-const DO_SHORT_DESC   = true;   const OVERWRITE_SHORT = false;  // false = append after existing
-const DO_LONG_DESC    = true;   const OVERWRITE_LONG  = false;  // false = append after existing
-const SHORT_DESC_WORDS    = 130;   // target words for the short description (edit per project)
-const LONG_DESC_MIN_WORDS = 650;   // minimum words for the long description (edit per project)
-const DO_META         = true;   const OVERWRITE_META  = true;   // Rank Math meta
+const DO_SHORT_DESC   = true;   const SHORT_DESC_MODE = 'fill';  // how to write it: 'append' (add after existing) | 'overwrite' (replace) | 'fill' (write ONLY when empty; skip if it already has one)
+const DO_LONG_DESC    = true;   const LONG_DESC_MODE  = 'fill';  // 'append' | 'overwrite' | 'fill'
+const SHORT_DESC_WORDS = '80-130';    // word RANGE (soft target, not a hard stop) so the AI has room to write well. A single number like '120' also works
+const LONG_DESC_WORDS  = '600-900';   // word RANGE for the long description. A single number (e.g. '600') also works
+const DO_META         = true;   const OVERWRITE_META  = false;   // Rank Math meta
 const DO_TAGS         = true;   const OVERWRITE_TAGS  = false;  // false = fill only if empty
-const DO_PRICE        = true;   const OVERWRITE_PRICE = false;  // false = set only if empty
+const DO_PRICE        = false;   const OVERWRITE_PRICE = false;  // false = set only if empty
 const PRODUCT_TYPE    = 'simple';               // 'simple' or 'variable' (AI proposes options)
 const PRICE_ENDING    = '.99';                  // '' = whole number
 const SHORT_DESC_INCLUDE_UNIT = true;           // add "Sold as: <unit>" to short desc?
@@ -81,12 +84,30 @@ const SITE_DOMAIN = '';             // your REAL domain, e.g. 'https://mysite.co
 // ---- IMAGES (Ideogram) -----------------------------------------------------
 const DO_IMAGE            = false;
 const SKIP_IF_HAS_IMAGE   = true;
-const IDEOGRAM_API_KEY    = '';
-const IDEOGRAM_MODEL      = 'V_2';
-const IDEOGRAM_ASPECT     = 'ASPECT_1_1';
-const IMAGE_STYLE = 'clean professional product photograph of a single isolated product, centered on a '
-                  . 'pure white background, studio softbox lighting, sharp focus, high detail, no people, '
-                  . 'no human faces, no hands, no text';
+const IDEOGRAM_API_KEY      = '';
+const IDEOGRAM_ASPECT       = 'ASPECT_1_1';   // 1:1 square. Kept in ASPECT_x_y form; auto-converted to v3's '1x1'
+const IDEOGRAM_RENDER_SPEED = 'QUALITY';      // Ideogram 3.0 render tier — higher = SHARPER label text. 'QUALITY' (sharpest, ~$0.09/img) | 'DEFAULT' (~$0.06) | 'TURBO' (~$0.03) | 'FLASH' (fastest/cheapest). Set lower to cut spend
+const IDEOGRAM_STYLE_TYPE   = 'REALISTIC';    // 'REALISTIC' (product photos) | 'GENERAL' | 'DESIGN' | 'AUTO' | 'FICTION'
+const IMAGE_STYLE = 'clean professional studio product photograph, single product alone and centered on a seamless '
+                  . 'soft-lit background, studio softbox lighting, sharp focus, high detail, realistic materials. '
+                  . 'NO person, NO hands, NO fingers, NO human face anywhere in the frame. If the product is packaged, the label is '
+                  . 'MINIMAL and clean: the ONLY text anywhere on the package is the large product name in a bold, correctly spelled '
+                  . 'sans-serif. There is NO other writing of any kind, NO small print, NO tagline or slogan, NO ingredient list, '
+                  . 'NO net weight, NO barcode, NO nutrition panel, NO directions and NO secondary lines; the rest of the label is '
+                  . 'plain and empty. If the product is unpackaged, show NO text at all';
+const IMAGE_NEGATIVE = 'person, people, human, man, woman, child, hand, hands, fingers, arm, arms, face, faces, portrait, '
+                     . 'model, mannequin, body, skin, crowd, misspelled text, gibberish text, distorted letters, random characters, '
+                     . 'small text, fine print, tiny letters, secondary text, subtitle, tagline, slogan, ingredient list, nutrition facts, '
+                     . 'barcode, QR code, directions text, disclaimer text, busy cluttered label, paragraph of text, watermark, extra limbs, deformed';   // v3 negative_prompt — excludes humans, garbled + small filler text
+// GUARANTEED-correct label text: generate a BLANK-label product photo, then burn the real product name on as a crisp caption bar.
+const IMAGE_TEXT_OVERLAY = true;   // true = generate a BLANK white front label, then WE print the 3-tier label (product name / use / brand) onto it — the ONLY text on the pack, perfect spelling every time. false = let the model draw the label text
+const IMAGE_LABEL_USE_FALLBACK = true;   // if no AI 'use' phrase exists, use the product's category as the middle line (e.g. 'Pain Relief')
+const OVERLAY_FONT       = '';     // optional .ttf next to this file (e.g. 'font.ttf') or absolute path for the caption; '' = Imagick built-in / auto-detected system font
+const IMAGE_STYLE_BLANK  = 'clean professional studio product photograph of a single product, FRONT-FACING and centered on a '
+                         . 'seamless soft muted light-gray studio background (NOT white), studio softbox lighting, sharp focus, high detail. '
+                         . 'NO person, NO hands, NO fingers, NO human face. The package has ONE LARGE clean BLANK bright-white matte '
+                         . 'label panel across the front-center, completely empty and smooth with NO text, NO letters, NO numbers, NO logos '
+                         . 'and NO markings of any kind. If the product is unpackaged, show it bare against the gray background';
 const WATERMARK_LOGO    = '';    // transparent PNG next to this file, or absolute path; '' = off
 const WATERMARK_OPACITY = 0.55;  const WATERMARK_SCALE = 0.20;  const WATERMARK_MARGIN = 24;
 
@@ -111,11 +132,26 @@ const DO_SHIPPING   = false;
 const DO_REFUND     = false;
 const DO_FAQ        = false;
 const DO_ABOUT      = false;
-const DO_BLOG       = false;   const BLOG_COUNT = 3;
+const DO_BLOG       = true;   // create SEO blog posts: post #1 goes live now, the rest auto-schedule into the future
+const BLOG_COUNT          = 45;      // total posts to create (spread across refreshes if BLOG_PER_RUN is set)
+const BLOG_CADENCE_DAYS   = 2;       // days between scheduled posts. Your example (Mon, Wed, Fri, Sun) = every 2 days. Set 1 for daily
+const BLOG_FIRST_LIVE     = true;    // true = publish post #1 immediately, schedule #2.. into the future. false = schedule ALL (nothing live today)
+const BLOG_PER_RUN        = 8;       // max posts to WRITE per page-load, so a 45-post run can't time out — refresh to write the next batch. 0 = all at once
+const BLOG_INTERNAL_LINKS = 4;       // minimum internal links per post (shop / categories / products / other posts). Guaranteed by a deterministic top-up
+const BLOG_EXTERNAL_LINK  = true;    // add ONE outbound link to an authoritative .gov/.mil/.edu/.int or public info/legal source — never a business/competitor
+const BLOG_WORDS          = '900-1300';   // article length target
+const BLOG_CATEGORY       = '';      // optional blog category name to file every post under ('' = none)
+const BLOG_LAYOUT         = 'no-sidebar';   // Flatsome blog layout (verified theme keys). 'no-sidebar' = clean full-width posts (recommended, stops the category-widget sidebar pushing content) | 'right-sidebar' | 'left-sidebar' | '' = leave your current setting untouched
 const OVERWRITE_PAGES = true;                 // legal/info pages: overwrite if they already have content
 
+// ---- BRANDING (site identity: name, colors, logo — the "Appearance > Customize" bits) ----------------
+const DO_BRANDING       = true;   // set the site title, an AI-chosen color palette, and a generated logo (icon + brand name)
+const BRANDING_OVERWRITE= true;   // false = set each item ONLY where the site hasn't been branded yet (safe). true = force name/colors/logo every run
+const SITE_TAGLINE      = '';      // '' = keep the current tagline  (the site TITLE is always BRAND_NAME — no separate setting)
+const LOGO_BG           = '#ffffff';   // logo canvas background. White blends with Flatsome's near-white header. Use a dark hex ONLY if your header is dark
+
 // ---- Compliance + anti-AI voice --------------------------------------------
-const COMPLIANCE_MODE = false;
+const COMPLIANCE_MODE = true;
 const DISCLAIMER_HTML = '<p><em>Always read the label and use products as directed. Consult a qualified '
                       . 'professional where appropriate.</em></p>';
 const PROHIBITED_WORDS = '';
@@ -131,7 +167,7 @@ const BANNED_AI_WORDS = [
 const MAX_PRODUCTS_PER_RUN  = 0;               // 0 = all in one run; e.g. 20 = do 20 NEW products per run, then refresh for more
 const RESET_PROGRESS        = false;           // true = wipe saved progress and reprocess EVERY product. Fires only ONCE (safe to leave on across refreshes); re-arms after the job finishes or when set back to false
 const REPROCESS_IDS         = [];              // redo only THESE product IDs even if already done, e.g. [12, 45, 99]. Also fires ONCE. (Use OVERWRITE_* = true so it replaces, not appends)
-const FORCE_IN_STOCK        = false;           // set every product + variation status to "In stock" (and keep it there)
+const FORCE_IN_STOCK        = true;           // set every product + variation status to "In stock" (and keep it there)
 const SELF_DELETE_WHEN_DONE = true;
 const PRODUCT_STATUSES = ['publish', 'draft', 'pending', 'private'];
 const PUBLISH_STATE = 'publish';               // pages/blog status (you chose publish)
@@ -140,7 +176,7 @@ const REPLACE_PRODUCT_CATEGORIES = false;      // ONLY used by DO_CATEGORIES gro
                                                // categories and replace them (destructive — this is what wiped categories).
 const APPEND_MARKER = '<span class="wcm-added"></span>';  // guards "append" so it only happens once. A <span> survives WordPress kses; an HTML comment gets stripped when saving unauthenticated
 const APPEND_SIG    = 'wcm-added';             // stable substring to detect the marker (matches the new span AND the old comment — backward-compatible)
-const ENABLE_LAWFUL_USE_GUARD = true;
+const ENABLE_LAWFUL_USE_GUARD = false;
 
 // #############################################################################
 // #                       END OF CONFIG — CODE BELOW                          #
@@ -173,6 +209,7 @@ if (!function_exists('wc_get_product')) { http_response_code(500); exit('WooComm
 @ini_set('output_buffering','off'); @ini_set('zlib.output_compression','0');
 while (ob_get_level() > 0) { ob_end_flush(); } ob_implicit_flush(true); ignore_user_abort(true); @set_time_limit(0);
 header('Content-Type: text/html; charset=utf-8');
+@header('X-LiteSpeed-Purge: *');   // tell the LiteSpeed server (Hostinger default) to purge its page cache — sent before output so edits show without a manual clear
 echo "<!doctype html><meta charset='utf-8'><title>WC Master</title>";
 echo "<body style='font:14px/1.5 monospace;background:#111;color:#ddd;padding:20px'>", str_repeat(' ', 4096);
 function out($m,$c='#ddd'){ echo "<div style='color:$c'>".esc_html($m)."</div>\n"; flush(); }
@@ -181,11 +218,17 @@ function brand(){ return BRAND_NAME !== '' ? BRAND_NAME : get_bloginfo('name'); 
 function tagline(){ return TAGLINE !== '' ? TAGLINE : get_bloginfo('description'); }
 function currency(){ return function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD'; }
 function shop_url(){ $u = function_exists('wc_get_page_permalink') ? wc_get_page_permalink('shop') : ''; return $u ?: home_url('/'); }
+function site_email(){ return CONTACT_EMAIL!=='' ? CONTACT_EMAIL : 'sales@'.preg_replace('/^www\./','',strtolower((string)parse_url(home_url(),PHP_URL_HOST))); }   // always sales@<domain> unless overridden
+function us_phone(){ if(CONTACT_PHONE!=='') return CONTACT_PHONE;   // placeholder only: 555-01xx is the reserved fictional range (never a real line) — replace it later
+    static $ph=null; if($ph!==null) return $ph;                       // ONE number for the whole run...
+    $ph=(string)get_option('wcm_phone'); if($ph!=='') return $ph;     // ...and persisted, so every page (contact, FAQ, shipping...) shows the SAME phone
+    $a=['212','213','305','312','404','415','469','512','617','646','702','713','786','813','917']; $ph='('.$a[mt_rand(0,count($a)-1)].') 555-'.sprintf('%04d',mt_rand(100,199));
+    update_option('wcm_phone',$ph,false); return $ph; }
 
 // ---------------------------------------------------------------------------
 // AI stack (Gemini / Claude) — throttle, billing-aware errors, tolerant parser
 // ---------------------------------------------------------------------------
-function ai_throttle(){ static $last=0.0; $rpm=(AI_PROVIDER==='gemini')?GEMINI_RPM:CLAUDE_RPM; $iv=$rpm>0?60.0/$rpm:0.0;   // rpm=0 => no throttle (full speed)
+function ai_throttle(){ static $last=0.0; $rpm=(AI_PROVIDER==='gemini')?GEMINI_RPM:((AI_PROVIDER==='openai')?OPENAI_RPM:CLAUDE_RPM); $iv=$rpm>0?60.0/$rpm:0.0;   // rpm=0 => no throttle (full speed)
     if($iv>0){ $g=microtime(true)-$last; if($g<$iv) usleep((int)(($iv-$g)*1e6)); } $last=microtime(true); }
 
 function ai_text_gemini($prompt){
@@ -216,6 +259,20 @@ function ai_text_claude($prompt){
     foreach(($j['content']??[]) as $b){ if(($b['type']??'')==='text') $t.=$b['text']; }
     return $t!=='' ? [$t,''] : [null,"Claude no text (stop_reason=$stop)"];
 }
+function ai_text_openai($prompt){   // ChatGPT / OpenAI Chat Completions (JSON mode)
+    $r=wp_remote_post('https://api.openai.com/v1/chat/completions',['timeout'=>180,
+        'headers'=>['Authorization'=>'Bearer '.OPENAI_API_KEY,'Content-Type'=>'application/json'],
+        'body'=>wp_json_encode(['model'=>OPENAI_MODEL,'temperature'=>0.9,'response_format'=>['type'=>'json_object'],'messages'=>[['role'=>'user','content'=>$prompt]]])]);
+    if(is_wp_error($r)) return [null,$r->get_error_message()];
+    $code=wp_remote_retrieve_response_code($r); $body=wp_remote_retrieve_body($r);
+    if($code==429){ $ra=(int)wp_remote_retrieve_header($r,'retry-after'); return [null,'429'.($ra>0?':'.$ra:'')]; }
+    if($code!=200){ $j=json_decode($body,true); $m=$j['error']['message']??substr($body,0,200);
+        if(stripos($m,'quota')!==false||stripos($m,'billing')!==false||stripos($m,'insufficient')!==false)
+            return [null,"OpenAI CREDIT/BILLING ($code): $m  >>> Top up, or set AI_PROVIDER='gemini' (free)."];
+        return [null,"OpenAI HTTP $code: $m"]; }
+    $j=json_decode($body,true); $t=(string)($j['choices'][0]['message']['content']??'');
+    return $t!=='' ? [$t,''] : [null,'OpenAI empty response'];
+}
 function json_escape_ctrl($s){ $o='';$in=false;$e=false;$n=strlen($s);
     for($i=0;$i<$n;$i++){ $c=$s[$i];
         if($in){ if($e){$o.=$c;$e=false;continue;} if($c==='\\'){$o.=$c;$e=true;continue;}
@@ -231,7 +288,7 @@ function extract_json($text){ $t=trim((string)$text);
     return null; }
 function ai_json($prompt){ $last=''; $rate=false;
     for($a=0;$a<3;$a++){ ai_throttle();
-        [$t,$err]=(AI_PROVIDER==='gemini')?ai_text_gemini($prompt):ai_text_claude($prompt);
+        [$t,$err]=(AI_PROVIDER==='gemini')?ai_text_gemini($prompt):((AI_PROVIDER==='openai')?ai_text_openai($prompt):ai_text_claude($prompt));
         if($err!==null && strpos((string)$err,'429')===0){ $rate=true;             // honor Retry-After if the API sent one
             $ra=(($c=strpos($err,':'))!==false)?(int)substr($err,$c+1):0; sleep($ra>0?min($ra+1,120):30*($a+1)); continue; }
         if($err) return [null,$err];
@@ -255,7 +312,15 @@ function compliance_clause(){ if(!COMPLIANCE_MODE) return '';
 function html_quote_rule(){ return "Use SINGLE quotes for all HTML attributes, never double quotes. Return ONE "
     . "valid JSON object only — no markdown, no code fences, no comments, no trailing commas — and keep each "
     . "HTML value on a single line (no raw line breaks inside strings).\n"; }
-function round_price($v){ $v=(float)$v; if($v<=0) return ''; return (strlen(PRICE_ENDING)&&PRICE_ENDING[0]==='.')?((int)$v).PRICE_ENDING:(string)round($v); }
+// turn a length spec into natural prompt wording: '80-130' -> 'between 80 and 130 words' (a soft range, never a hard stop); '120' -> 'around 120 words'
+function words_phrase($spec){ $spec=trim((string)$spec);
+    if(preg_match('/^(\d+)\s*[-–]\s*(\d+)$/',$spec,$m)) return 'between '.$m[1].' and '.$m[2].' words (a flexible target, not a hard limit)';
+    return 'around '.$spec.' words'; }
+// standard company facts every info/legal/FAQ page must use — the SAME email + phone everywhere, worldwide shipping, costs shown at checkout (never invented figures)
+function company_facts(){ return "COMPANY FACTS — use these EXACT details wherever contact info or specifics are needed, and never invent different ones:\n"
+    ."- Store name: ".brand()."\n- Support email: ".site_email()."\n- Support phone: ".us_phone()."\n- Based in: ".CONTACT_LOCATION."\n- Support hours: Monday to Friday, 9:00 AM to 5:00 PM.\n"
+    ."- Shipping: we ship WORLDWIDE, to anywhere in the world (USA and international). Do NOT state any exact shipping price or dollar figure; say the exact shipping cost is calculated automatically and shown at checkout before payment.\n"
+    ."- Tone: standard, professional, reassuring and POSITIVE about what the store can do; never say we cannot do something, frame any limit positively.\n"; }
 function excerpt($html,$n=280){ return trim(mb_substr(wp_strip_all_tags((string)$html),0,$n)); }
 function existing_hrefs($html){ preg_match_all('/href=["\']([^"\']+)["\']/',(string)$html,$m); return $m[1]; }
 // --- domain handling: use SITE_DOMAIN when set, otherwise the live site's own URL ---
@@ -284,23 +349,38 @@ function dedash($s){ $s=(string)$s; if($s==='') return $s;
     $s=preg_replace('/(?:,\s*){2,}/',', ',$s);       // collapse doubled commas
     $s=preg_replace('/(^|>)\s*,\s+/','$1',$s);       // drop a stray leading comma at the start or right after a tag
     return preg_replace('/[ \t]{2,}/',' ',$s); }
-/** apply text with append-once / overwrite / fill. Returns [value, changed]. */
-function apply_text($cur,$new,$overwrite){ $cur=(string)$cur; $new=(string)$new; if($new==='') return [$cur,false];
-    if(trim($cur)==='') return [$new,true];
-    if($overwrite) return [$new,true];
-    if(strpos($cur,APPEND_SIG)!==false) return [$cur,false];
-    return [$cur."\n".APPEND_MARKER."\n".$new,true]; }
+/** true if a field should be (re)written given its current value and the mode ('append'|'overwrite'|'fill'). */
+function field_need($cur,$mode){ $cur=(string)$cur;
+    if($mode==='overwrite') return true;                 // always rewrite
+    if($mode==='fill') return trim($cur)==='';           // only when empty
+    return trim($cur)==='' || strpos($cur,APPEND_SIG)===false; }   // append: empty, or not yet appended
+/** apply text per mode. Returns [value, changed]. Mirrors field_need exactly. */
+function apply_text($cur,$new,$mode){ $cur=(string)$cur; $new=(string)$new; if($new==='') return [$cur,false];
+    if(trim($cur)===''){ return [$mode==='append' ? $new."\n".APPEND_MARKER : $new, true]; }   // empty -> fill it; in append mode plant the marker NOW so a later reprocess doesn't append a 2nd copy
+    if($mode==='fill') return [$cur,false];              // has content + fill-only -> leave it untouched
+    if($mode==='overwrite') return [$new,true];          // replace
+    if(strpos($cur,APPEND_SIG)!==false) return [$cur,false];        // append: already appended once
+    return [$cur."\n".APPEND_MARKER."\n".$new,true]; }   // append after existing
 
 // ---------------------------------------------------------------------------
 // Images (Ideogram + optional GD/Imagick watermark)
 // ---------------------------------------------------------------------------
-function ideogram_url($prompt){ if(IDEOGRAM_API_KEY==='') return [null,'IDEOGRAM_API_KEY empty'];
-    for($a=0;$a<4;$a++){ $r=wp_remote_post('https://api.ideogram.ai/generate',['timeout'=>120,
-        'headers'=>['Api-Key'=>IDEOGRAM_API_KEY,'Content-Type'=>'application/json'],
-        'body'=>wp_json_encode(['image_request'=>['prompt'=>$prompt,'model'=>IDEOGRAM_MODEL,'magic_prompt_option'=>'OFF','style_type'=>'REALISTIC','aspect_ratio'=>IDEOGRAM_ASPECT]])]);
+function ideogram_url($prompt,$negative=null,$aspect=null){ if(IDEOGRAM_API_KEY==='') return [null,'IDEOGRAM_API_KEY empty'];
+    // Ideogram 3.0 (v3) — far better label-text rendering than the legacy v1/v2 endpoint. Body is multipart/form-data
+    // (top-level fields, no image_request wrapper), aspect is '1x1'-style, and rendering_speed drives text sharpness.
+    // $negative/$aspect override the product-image defaults (the logo generator passes its own, since it must NOT exclude 'logo').
+    $ar=str_replace('_','x',strtolower(str_replace('ASPECT_','',$aspect?:IDEOGRAM_ASPECT)));   // 'ASPECT_1_1' -> '1x1'
+    $fields=['prompt'=>$prompt,'negative_prompt'=>($negative!==null?$negative:image_negative()),'aspect_ratio'=>$ar,'rendering_speed'=>IDEOGRAM_RENDER_SPEED,'magic_prompt'=>'OFF','style_type'=>IDEOGRAM_STYLE_TYPE];
+    $boundary='----wcm'.wp_generate_password(20,false,false);   // unique multipart boundary; letters/numbers only
+    $body=''; foreach($fields as $k=>$v){ $body.='--'.$boundary."\r\n".'Content-Disposition: form-data; name="'.$k.'"'."\r\n\r\n".$v."\r\n"; }
+    $body.='--'.$boundary."--\r\n";
+    for($a=0;$a<4;$a++){ $r=wp_remote_post('https://api.ideogram.ai/v1/ideogram-v3/generate',['timeout'=>120,
+        'headers'=>['Api-Key'=>IDEOGRAM_API_KEY,'Content-Type'=>'multipart/form-data; boundary='.$boundary],
+        'body'=>$body]);
         if(is_wp_error($r)) return [null,$r->get_error_message()];
         $code=wp_remote_retrieve_response_code($r); if($code==429){ sleep(30*($a+1)); continue; }
-        if($code!=200) return [null,"Ideogram $code"]; $u=(json_decode(wp_remote_retrieve_body($r),true)['data'][0]['url']??'');
+        if($code!=200) return [null,"Ideogram $code: ".substr((string)wp_remote_retrieve_body($r),0,200)];
+        $u=(json_decode(wp_remote_retrieve_body($r),true)['data'][0]['url']??'');
         return $u?[$u,'']:[null,'no image URL']; }
     return [null,'rate-limited']; }
 function icm_alpha($dst,$src,$dx,$dy,$sw,$sh,$op){ $cut=imagecreatetruecolor($sw,$sh);
@@ -320,13 +400,161 @@ function watermark($path){ $logo=(substr(WATERMARK_LOGO,0,1)==='/')?WATERMARK_LO
     imagefill($sc,0,0,imagecolorallocatealpha($sc,0,0,0,127)); imagecopyresampled($sc,$lg,0,0,0,0,$tw,$th,$lw,$lh);
     icm_alpha($base,$sc,max(0,$bw-$tw-WATERMARK_MARGIN),max(0,$bh-$th-WATERMARK_MARGIN),$tw,$th,(int)round(WATERMARK_OPACITY*100));
     imagepng($base,$path); return true; }
-function attach_image($url,$pid,$alt,$name){ $tmp=download_url($url,120); if(is_wp_error($tmp)) return [0,$tmp->get_error_message()];
+// choose the model style/negatives: when overlaying our own caption we ask for a BLANK label and forbid the model from drawing ANY text
+function image_style(){ return IMAGE_TEXT_OVERLAY ? IMAGE_STYLE_BLANK : IMAGE_STYLE; }
+function image_negative(){ return IMAGE_TEXT_OVERLAY ? IMAGE_NEGATIVE.', text, letters, numbers, words, writing, typography, logo, printed label, caption' : IMAGE_NEGATIVE; }
+// --- deterministic label overlay: print the product name / use / brand onto a blank pack so spelling is ALWAYS correct ---
+function overlay_font(){ static $f=null; if($f!==null) return $f; $f='';
+    if(OVERLAY_FONT!==''){ $c=(OVERLAY_FONT[0]==='/')?OVERLAY_FONT:__DIR__.'/'.OVERLAY_FONT; if(@file_exists($c)){ $f=$c; return $f; } }
+    foreach(['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf','/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+        '/Library/Fonts/Arial.ttf','/System/Library/Fonts/Supplemental/Arial.ttf','C:/Windows/Fonts/arialbd.ttf'] as $c){ if(@file_exists($c)){ $f=$c; break; } }
+    return $f; }
+function overlay_label($path,$L){ $name=trim(preg_replace('/\s+/',' ',(string)($L['name']??''))); if($name==='') return false;
+    $use=trim(preg_replace('/\s+/',' ',(string)($L['use']??''))); $brand=trim(preg_replace('/\s+/',' ',(string)($L['brand']??''))); $font=overlay_font();
+    if(class_exists('Imagick')){ try{ return label_imagick($path,$name,$use,$brand,$font); }catch(\Throwable $e){} }   // fall through to GD on any Imagick failure
+    return label_gd($path,$name,$use,$brand,$font); }
+function wrap_imagick($img,$draw,$words,$maxW,$maxLines){ $lines=[]; $cur='';
+    foreach($words as $wd){ $try=$cur===''?$wd:$cur.' '.$wd; $m=$img->queryFontMetrics($draw,$try);
+        if($m['textWidth']<=$maxW){ $cur=$try; continue; }
+        if($cur==='') return null; $lines[]=$cur; $cur=$wd; if(count($lines)>=$maxLines) return null;
+        $m2=$img->queryFontMetrics($draw,$cur); if($m2['textWidth']>$maxW) return null; }
+    if($cur!=='') $lines[]=$cur; return count($lines)<=$maxLines?$lines:null; }
+function label_imagick($path,$name,$use,$brand,$font){ $img=new Imagick($path); $img->setImageFormat('png');
+    $w=$img->getImageWidth(); $h=$img->getImageHeight(); if($w<1||$h<1) return false; $maxW=$w*0.78;
+    $mk=function($size) use($font){ $d=new ImagickDraw(); if($font) $d->setFont($font); $d->setTextAlignment(Imagick::ALIGN_CENTER);
+        $d->setFillColor(new ImagickPixel('#141414')); $d->setStrokeColor(new ImagickPixel('rgba(255,255,255,0.7)')); $d->setStrokeWidth(max(1.0,$size*0.035)); $d->setStrokeAntialias(true); $d->setFontSize($size); return $d; };
+    $fit=function($text,$hi,$lo,$max2) use($img,$maxW,$mk){ if($text==='') return null; $words=preg_split('/\s+/',$text);
+        for($s=$hi;$s>=$lo;$s--){ $d=$mk($s); $ls=wrap_imagick($img,$d,$words,$maxW,$max2); if($ls) return ['size'=>$s,'lines'=>$ls,'draw'=>$d]; }
+        $d=$mk($lo); $t=$text; while($t!==''){ $m=$img->queryFontMetrics($d,$t.'…'); if($m['textWidth']<=$maxW) break; $t=mb_substr($t,0,mb_strlen($t)-1); }
+        return ['size'=>$lo,'lines'=>[$t!==''?$t.'…':$text],'draw'=>$d]; };
+    // enforced hierarchy: name biggest, use a little smaller, brand a little smaller than use
+    $N=$fit($name,(int)round($h*0.11),(int)round($h*0.05),2); if(!$N) return false;
+    $U=$use!==''?$fit($use,max((int)round($h*0.045),(int)round($N['size']*0.78)),(int)round($h*0.04),2):null;
+    $B=$brand!==''?$fit($brand,max((int)round($h*0.035),(int)round(($U?$U['size']:$N['size'])*0.82)),(int)round($h*0.03),1):null;
+    // name + use as a centered block around 0.40H; brand near the bottom of the pack
+    $nLineH=$N['size']*1.16; $blockH=$nLineH*count($N['lines']) + ($U?($U['size']*0.5+$U['size']*1.16*count($U['lines'])):0);
+    $y=$h*0.40-$blockH/2+$N['size']*0.80;
+    foreach($N['lines'] as $ln){ $img->annotateImage($N['draw'],$w/2,$y,0,$ln); $y+=$nLineH; }
+    if($U){ $y+=$U['size']*0.5; foreach($U['lines'] as $ln){ $img->annotateImage($U['draw'],$w/2,$y,0,$ln); $y+=$U['size']*1.16; } }
+    if($B){ $by=$h*0.82; foreach($B['lines'] as $ln){ $img->annotateImage($B['draw'],$w/2,$by,0,$ln); $by+=$B['size']*1.16; } }
+    $img->writeImage($path); $img->clear(); return true; }
+function wrap_gd($font,$size,$words,$maxW,$maxLines){ $lines=[]; $cur='';
+    foreach($words as $wd){ $try=$cur===''?$wd:$cur.' '.$wd; $bb=imagettfbbox($size,0,$font,$try); $tw=$bb[2]-$bb[0];
+        if($tw<=$maxW){ $cur=$try; continue; }
+        if($cur==='') return null; $lines[]=$cur; $cur=$wd; if(count($lines)>=$maxLines) return null;
+        $bb2=imagettfbbox($size,0,$font,$cur); if(($bb2[2]-$bb2[0])>$maxW) return null; }
+    if($cur!=='') $lines[]=$cur; return count($lines)<=$maxLines?$lines:null; }
+function label_gd($path,$name,$use,$brand,$font){ $base=@imagecreatefromstring(@file_get_contents($path)); if(!$base) return false;
+    imagealphablending($base,true); imagesavealpha($base,true); $w=imagesx($base); $h=imagesy($base); $maxW=$w*0.78;
+    if($font && function_exists('imagettftext') && function_exists('imagettfbbox')){
+        $dark=imagecolorallocate($base,20,20,20); $halo=imagecolorallocate($base,255,255,255);
+        $fit=function($text,$hi,$lo,$max2) use($font,$maxW){ if($text==='') return null; $words=preg_split('/\s+/',$text);
+            for($s=$hi;$s>=$lo;$s--){ $ls=wrap_gd($font,$s,$words,$maxW,$max2); if($ls) return ['size'=>$s,'lines'=>$ls]; } return ['size'=>$lo,'lines'=>[$text]]; };
+        $draw=function($size,$lines,$cy) use($base,$font,$w,$dark,$halo){ $lineH=(int)round($size*1.16); $y=(int)round($cy);
+            foreach($lines as $ln){ $bb=imagettfbbox($size,0,$font,$ln); $x=(int)round(($w-($bb[2]-$bb[0]))/2);
+                foreach([[-2,0],[2,0],[0,-2],[0,2]] as $o) imagettftext($base,$size,0,$x+$o[0],$y+$o[1],$halo,$font,$ln);   // white halo for legibility on any label
+                imagettftext($base,$size,0,$x,$y,$dark,$font,$ln); $y+=$lineH; } return $y; };
+        $N=$fit($name,(int)round($h*0.11),(int)round($h*0.05),2); if(!$N){ imagedestroy($base); return false; }
+        $U=$use!==''?$fit($use,max((int)round($h*0.045),(int)round($N['size']*0.78)),(int)round($h*0.04),2):null;
+        $B=$brand!==''?$fit($brand,max((int)round($h*0.035),(int)round(($U?$U['size']:$N['size'])*0.82)),(int)round($h*0.03),1):null;
+        $nLineH=(int)round($N['size']*1.16); $blockH=$nLineH*count($N['lines']) + ($U?(int)round($U['size']*0.5+$U['size']*1.16*count($U['lines'])):0);
+        $y=$draw($N['size'],$N['lines'],$h*0.40-$blockH/2+$N['size']*0.80);
+        if($U){ $y+=(int)round($U['size']*0.5); $draw($U['size'],$U['lines'],$y); }
+        if($B){ $draw($B['size'],$B['lines'],$h*0.82); }
+        imagepng($base,$path); imagedestroy($base); return true; }
+    // no usable TTF: built-in bitmap font (legible, plain) — name + brand on a centered bar
+    $white=imagecolorallocate($base,255,255,255); $bar=imagecolorallocatealpha($base,0,0,0,60);
+    $gf=5; $fw=imagefontwidth($gf); $fh=imagefontheight($gf); $txt=$name.($brand!==''?'  -  '.$brand:''); $max=(int)floor($maxW/$fw); if($max<1) $max=1;
+    if(mb_strlen($txt)>$max) $txt=mb_substr($txt,0,max(1,$max-1)).'…'; $barH=$fh+16; $y0=(int)round($h*0.5-$barH/2);
+    imagefilledrectangle($base,0,$y0,$w,$y0+$barH,$bar); $x=(int)round(($w-strlen($txt)*$fw)/2);
+    imagestring($base,$gf,$x,$y0+(int)round(($barH-$fh)/2),$txt,$white); imagepng($base,$path); imagedestroy($base); return true; }
+function attach_image($url,$pid,$alt,$name,$label=null){ $tmp=download_url($url,120); if(is_wp_error($tmp)) return [0,$tmp->get_error_message()];
     $ext=strtolower(pathinfo((string)parse_url($url,PHP_URL_PATH),PATHINFO_EXTENSION)); if(!in_array($ext,['png','jpg','jpeg','webp','gif'],true)) $ext='png';
+    if(IMAGE_TEXT_OVERLAY && overlay_label($tmp,$label?:['name'=>$name])) $ext='png';   // print the 3-tier label (name / use / brand) — perfect spelling
     if(WATERMARK_LOGO!=='' && watermark($tmp)) $ext='png';
     $att=media_handle_sideload(['name'=>sanitize_title($name).'-'.$pid.'.'.$ext,'tmp_name'=>$tmp],$pid,$name);
     if(is_wp_error($att)){ @unlink($tmp); return [0,$att->get_error_message()]; }
     set_post_thumbnail($pid,$att); update_post_meta($att,'_wp_attachment_image_alt',$alt); return [$att,'']; }
-function form_hint($h){ foreach(['vial'=>'a single labeled glass vial','ampoule'=>'a sealed glass ampoule','syringe'=>'a prefilled medical syringe','capsule'=>'an amber pill bottle of capsules','tablet'=>'a blister strip of tablets','powder'=>'a sealed jar of powder','sachet'=>'a sealed sachet','pouch'=>'a resealable pouch','tube'=>'a labeled tube','jar'=>'a labeled jar','engine'=>'a complete automotive engine','bottle'=>'a labeled bottle','liter'=>'a labeled liquid container'] as $k=>$v){ if(strpos($h,$k)!==false) return $v; } return ''; }
+
+// ---------------------------------------------------------------------------
+// Branding: AI color palette + generated logo (icon emblem + composited brand name)
+// ---------------------------------------------------------------------------
+function hex_ok($c){ return is_string($c) && preg_match('/^#[0-9a-fA-F]{6}$/',trim($c)); }
+// deterministic fallback palette derived from the brand name (no AI) so branding still works with no text key / failed call
+function palette_fallback(){ $seed=crc32(strtolower(brand().'|'.STORE_NICHE)); $h=$seed%360;
+    $prim=hsl_hex($h,0.55,0.42); $sec=hsl_hex(($h+150)%360,0.60,0.48); $acc=hsl_hex(($h+30)%360,0.65,0.45);
+    return ['primary'=>$prim,'secondary'=>$sec,'accent'=>$acc]; }
+function hsl_hex($h,$s,$l){ $c=(1-abs(2*$l-1))*$s; $x=$c*(1-abs(fmod($h/60,2)-1)); $m=$l-$c/2;
+    if($h<60){$r=$c;$g=$x;$b=0;}elseif($h<120){$r=$x;$g=$c;$b=0;}elseif($h<180){$r=0;$g=$c;$b=$x;}
+    elseif($h<240){$r=0;$g=$x;$b=$c;}elseif($h<300){$r=$x;$g=0;$b=$c;}else{$r=$c;$g=0;$b=$x;}
+    return sprintf('#%02x%02x%02x',(int)round(($r+$m)*255),(int)round(($g+$m)*255),(int)round(($b+$m)*255)); }
+function brand_palette(){ static $p=null; if($p!==null) return $p; $p=palette_fallback();
+    [$d]=ai_json("Choose a professional website color palette for ".brand().", an online store selling ".STORE_NICHE.". "
+        ."Pick colors that fit the feel of that niche (readable, not neon). Return ONE JSON object: "
+        ."{\"primary\":\"#RRGGBB\",\"secondary\":\"#RRGGBB\",\"accent\":\"#RRGGBB\"} — full 6-digit hex, no comments.");
+    if(is_array($d)){ foreach(['primary','secondary','accent'] as $k){ if(hex_ok($d[$k]??null)) $p[$k]=strtolower(trim($d[$k])); } }
+    return $p; }
+// hex -> [r,g,b]
+function hex_rgb($h){ $h=ltrim((string)$h,'#'); if(strlen($h)===3) $h=$h[0].$h[0].$h[1].$h[1].$h[2].$h[2];
+    return [hexdec(substr($h,0,2)),hexdec(substr($h,2,2)),hexdec(substr($h,4,2))]; }
+function is_dark_hex($h){ [$r,$g,$b]=hex_rgb($h); return (0.299*$r+0.587*$g+0.114*$b)<140; }   // perceived luminance
+// Build the wordmark logo: AI icon on the left, brand name (+ tagline) as REAL text on the right. Returns [url,path] or [null,err].
+function generate_logo($palette){
+    $neg='text, letters, words, typography, watermark, signature, frame, border, photo, realistic photograph, person, hands';
+    $prompt="A clean, modern, minimal FLAT VECTOR emblem icon symbolizing ".STORE_NICHE." for the brand ".brand().". "
+        ."Simple geometric mark, bold and memorable, using the colors ".$palette['primary']." and ".$palette['secondary'].
+        " on a plain solid white background. Centered, lots of padding, NO text, NO letters, NO words of any kind.";
+    [$u,$e]=ideogram_url($prompt,$neg,'ASPECT_1_1'); if(!$u) return [null,$e?:'no icon'];
+    $tmp=download_url($u,120); if(is_wp_error($tmp)) return [null,$tmp->get_error_message()];
+    $out=wp_upload_dir(); $dir=trailingslashit($out['path']); $file=$dir.'wcm-logo-'.substr(md5(brand().microtime()),0,8).'.png';
+    $ok=compose_logo($tmp,$file,brand(),tagline(),$palette); @unlink($tmp);
+    if(!$ok) return [null,'logo compose failed'];
+    return [trailingslashit($out['url']).basename($file),$file]; }
+// composite icon + name (+tagline) onto a LOGO_BG canvas. Imagick preferred, GD fallback.
+function compose_logo($iconPath,$outPath,$name,$tagline,$palette){ $font=overlay_font();
+    $bg=hex_ok(LOGO_BG)?LOGO_BG:'#ffffff'; $textcol=is_dark_hex($bg)?'#ffffff':$palette['primary']; $subcol=is_dark_hex($bg)?'#dddddd':'#666666';
+    $H=220; $pad=24; $iconW=180;
+    if(class_exists('Imagick')){ try{
+        $icon=new Imagick($iconPath); $icon->setImageFormat('png'); $icon->resizeImage($iconW,$iconW,Imagick::FILTER_LANCZOS,1);
+        if(is_dark_hex($bg)) $icon->transparentPaintImage(new ImagickPixel('white'),0.0,6000,false);   // knock out white so a light icon sits on a dark bar
+        $canvas=new Imagick(); $canvas->newImage(900,$H,new ImagickPixel($bg)); $canvas->setImageFormat('png');
+        $canvas->compositeImage($icon,Imagick::COMPOSITE_OVER,$pad,(int)(($H-$iconW)/2));
+        $tx=$pad+$iconW+$pad; $tw=900-$tx-$pad;
+        $d=new ImagickDraw(); if($font) $d->setFont($font); $d->setFillColor(new ImagickPixel($textcol)); $d->setTextAlignment(Imagick::ALIGN_LEFT);
+        $size=64; for(;$size>=22;$size-=2){ $d->setFontSize($size); $m=$canvas->queryFontMetrics($d,$name); if($m['textWidth']<=$tw) break; }
+        $d->setFontSize($size); $ny=$tagline!==''?$H/2-6:$H/2+$size*0.35; $canvas->annotateImage($d,$tx,$ny,0,$name);
+        if($tagline!==''){ $d2=new ImagickDraw(); if($font) $d2->setFont($font); $d2->setFillColor(new ImagickPixel($subcol)); $d2->setTextAlignment(Imagick::ALIGN_LEFT);
+            $ss=24; for(;$ss>=12;$ss-=1){ $d2->setFontSize($ss); $m=$canvas->queryFontMetrics($d2,$tagline); if($m['textWidth']<=$tw) break; }
+            $d2->setFontSize($ss); $canvas->annotateImage($d2,$tx,$H/2+$size*0.55,0,$tagline); }
+        $canvas->trimImage(0); $canvas->setImagePage(0,0,0,0);   // trim empty canvas space to the content
+        $canvas->writeImage($outPath); $canvas->clear(); $icon->clear(); return true; }catch(\Throwable $e){} }
+    // GD fallback
+    if(!function_exists('imagettftext')||!$font) return false;
+    $icon=@imagecreatefromstring(@file_get_contents($iconPath)); if(!$icon) return false;
+    $iw=imagesx($icon); $ih=imagesy($icon); $sc=imagecreatetruecolor($iconW,$iconW); imagealphablending($sc,true);
+    imagecopyresampled($sc,$icon,0,0,0,0,$iconW,$iconW,$iw,$ih);
+    $canvas=imagecreatetruecolor(900,$H); [$br,$bg2,$bb]=hex_rgb($bg); imagefill($canvas,0,0,imagecolorallocate($canvas,$br,$bg2,$bb));
+    imagecopy($canvas,$sc,$pad,(int)(($H-$iconW)/2),0,0,$iconW,$iconW);
+    [$tr,$tg,$tb]=hex_rgb($textcol); $tc=imagecolorallocate($canvas,$tr,$tg,$tb);
+    $tx=$pad+$iconW+$pad; $tw=900-$tx-$pad; $size=54;
+    for(;$size>=20;$size-=2){ $bb2=imagettfbbox($size,0,$font,$name); if(($bb2[2]-$bb2[0])<=$tw) break; }
+    $ny=$tagline!==''?(int)($H/2-4):(int)($H/2+$size*0.35); imagettftext($canvas,$size,0,$tx,$ny,$tc,$font,$name);
+    if($tagline!==''){ [$sr,$sg,$sb]=hex_rgb($subcol); $scc=imagecolorallocate($canvas,$sr,$sg,$sb); $ss=22;
+        for(;$ss>=11;$ss-=1){ $bb3=imagettfbbox($ss,0,$font,$tagline); if(($bb3[2]-$bb3[0])<=$tw) break; }
+        imagettftext($canvas,$ss,0,$tx,(int)($H/2+$size*0.6),$scc,$font,$tagline); }
+    imagepng($canvas,$outPath); imagedestroy($canvas); imagedestroy($icon); imagedestroy($sc); return true; }
+function form_hint($h){ foreach([
+    // food / snacks / drinks
+    'chip'=>'a printed stand-up snack pouch','crisp'=>'a printed stand-up snack pouch','snack'=>'a printed stand-up snack pouch','plantain'=>'a printed stand-up snack pouch',
+    'juice'=>'a labeled glass bottle of juice','drink'=>'a labeled bottle','smoothie'=>'a labeled bottle','tea'=>'a labeled box of tea','coffee'=>'a labeled coffee bag','honey'=>'a labeled honey jar','oil'=>'a labeled bottle','sauce'=>'a labeled bottle','spice'=>'a labeled spice jar','flour'=>'a labeled paper bag','cereal'=>'a printed carton',
+    // cosmetics / personal care
+    'cream'=>'a labeled cosmetic jar','lotion'=>'a labeled pump bottle','serum'=>'a labeled dropper bottle','soap'=>'a wrapped/boxed soap bar','shampoo'=>'a labeled bottle','balm'=>'a labeled tin','scrub'=>'a labeled cosmetic jar','perfume'=>'a labeled glass perfume bottle',
+    // generic packaging keywords
+    'sachet'=>'a sealed sachet','pouch'=>'a resealable pouch','tube'=>'a labeled tube','jar'=>'a labeled jar','bottle'=>'a labeled bottle','box'=>'a printed box','carton'=>'a printed carton','packet'=>'a sealed packet','powder'=>'a sealed labeled pouch of powder','liter'=>'a labeled liquid container',
+    // unpackaged goods (no label)
+    'engine'=>'a complete automotive engine, unpackaged','tool'=>'the bare tool, unpackaged','part'=>'the bare part, unpackaged','hammer'=>'a bare hammer, unpackaged',
+] as $k=>$v){ if(strpos($h,$k)!==false) return $v; } return ''; }
 function image_subject($pid,$name,$catname){ $s=trim((string)get_post_meta($pid,'_image_subject',true)); if($s!=='') return $s;
     $u=trim((string)get_post_meta($pid,'_unit_of_sale',true)); $p=wc_get_product($pid); $short=$p?excerpt($p->get_short_description(),200):'';
     $hint=form_hint(strtolower($u.' '.$short.' '.$name.' '.$catname)); $cat=$catname?" for $catname":'';
@@ -341,6 +569,50 @@ function inject_links($html,$related,$cat_url,$cat_name){ $related=array_values(
     foreach($miss as $r){ $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; }   // only the links not already present — never duplicates
     $b=$li?"\n<h2>Related Products</h2>\n<ul>$li</ul>":''; if($needcat) $b.="\n<p>Browse more in <a href=\"".esc_url($cat_url).'">'.esc($cat_name).'</a>.</p>';
     return $html.$b; }
+
+// ---------------------------------------------------------------------------
+// Blog links: keep our own internal links, allow ONE authoritative outbound
+// link (gov/edu/public-info/legal), unwrap every other external link so no
+// business/competitor URL ever survives. Then top up internal links to target.
+// ---------------------------------------------------------------------------
+function blog_authoritative_host($host){ $h=preg_replace('/^www\./','',strtolower((string)$host)); if($h==='') return false;
+    if(preg_match('/(^|\.)(gov|mil|edu|int)(\.[a-z]{2})?$/',$h)) return true;   // .gov .mil .edu .int and .gov.uk / .edu.au style
+    $ok=['who.int','un.org','europa.eu','ec.europa.eu','efsa.europa.eu','ema.europa.eu','nih.gov','ncbi.nlm.nih.gov',
+         'fda.gov','cdc.gov','ftc.gov','usda.gov','epa.gov','osha.gov','nist.gov','cpsc.gov','sec.gov','irs.gov','loc.gov',
+         'law.cornell.edu','wikipedia.org'];   // curated non-commercial public/reference sources
+    foreach($ok as $d){ if($h===$d || substr($h,-(strlen($d)+1))==='.'.$d) return true; } return false; }
+function blog_is_internal_href($u){ $u=trim((string)$u); if($u===''||$u[0]==='#') return false; if($u[0]==='/') return true;
+    $host=parse_url($u,PHP_URL_HOST); return $host && preg_replace('/^www\./','',strtolower($host))===site_host(); }
+function blog_count_internal($html){ $n=0; foreach(existing_hrefs($html) as $u){ if(blog_is_internal_href($u)) $n++; } return $n; }
+function blog_filter_links($html){ if(strpos((string)$html,'<a')===false) return [(string)$html,false]; $extKept=false;
+    $out=preg_replace_callback('/<a\b[^>]*\bhref=["\']([^"\']*)["\'][^>]*>(.*?)<\/a>/is', function($m) use(&$extKept){
+        $url=trim($m[1]); if(!is_foreign_url($url)) return $m[0];                       // our own site / relative / mailto / tel / anchor -> keep
+        if(BLOG_EXTERNAL_LINK && !$extKept && blog_authoritative_host((string)parse_url($url,PHP_URL_HOST))){ $extKept=true; return $m[0]; }
+        return $m[2];                                                                    // any other external (incl. business/competitor) -> unwrap, keep the text
+    },(string)$html); return [$out,$extKept]; }
+function blog_internal_pool(){ static $p=null; if($p!==null) return $p; $raw=[];
+    $raw[]=['url'=>shop_url(),'name'=>'our full catalog'];
+    foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false,'number'=>20]) as $t){ if(is_wp_error($t)||strtolower($t->slug)==='uncategorized') continue; $u=get_term_link($t); if(!is_wp_error($u)) $raw[]=['url'=>$u,'name'=>$t->name]; }
+    foreach(get_posts(['post_type'=>'product','post_status'=>'publish','numberposts'=>30,'orderby'=>'ID','order'=>'ASC']) as $po){ $raw[]=['url'=>get_permalink($po),'name'=>get_the_title($po)]; }   // full objects: get_posts primes the post cache, so get_permalink/get_the_title are hits, not per-id queries
+    $cp=get_page_by_path('contact-us'); if($cp) $raw[]=['url'=>get_permalink($cp->ID),'name'=>'contact us'];
+    foreach(get_posts(['post_type'=>'post','post_status'=>'publish','numberposts'=>30,'orderby'=>'ID','order'=>'DESC']) as $bo){ $raw[]=['url'=>get_permalink($bo),'name'=>get_the_title($bo)]; }   // PUBLISH only — never offer a scheduled/future post as an internal link (its URL 404s until it goes live). Full objects = cache hits
+    $seen=[]; $p=[]; foreach($raw as $r){ $u=site_link($r['url']); if(!$u||is_wp_error($u)||isset($seen[$u])) continue; $seen[$u]=1; $p[]=['url'=>$u,'name'=>$r['name']]; } return $p; }
+function blog_link_menu($idx){ $pool=blog_internal_pool(); $n=count($pool); if($n===0) return []; $k=min(6,$n); $seen=[]; $out=[];
+    for($i=0;$i<$k && count($out)<$k;$i++){ $x=$pool[($idx*3+$i)%$n]; if(isset($seen[$x['url']])) continue; $seen[$x['url']]=1; $out[]=$x; } return $out; }   // rotate the menu by post index so different posts link different pages
+function blog_topup_links($html,$target){ $target=(int)$target; if($target<=0) return $html; $cur=blog_count_internal($html); if($cur>=$target) return $html;
+    $have=[]; foreach(existing_hrefs($html) as $u){ $have[rtrim((string)$u,'/')]=1; } $need=$target-$cur; $li='';
+    foreach(blog_internal_pool() as $r){ if($need<=0) break; $ru=rtrim((string)$r['url'],'/'); if(isset($have[$ru])) continue; $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; $have[$ru]=1; $need--; }
+    return $li==='' ? $html : $html."\n<h2>Explore more</h2>\n<ul>$li</ul>"; }
+function blog_article_prompt($ti,$idx){ $links=''; foreach(blog_link_menu($idx) as $m){ $links.='  - '.$m['name'].': '.$m['url']."\n"; }
+    $ext = BLOG_EXTERNAL_LINK
+        ? "OUTBOUND LINK: include EXACTLY ONE link to an authoritative, non-commercial source that fits the topic — a government (.gov), military (.mil), educational (.edu) or intergovernmental (.int) site, or a well-known public health/legal/reference source (e.g. fda.gov, cdc.gov, nih.gov, ftc.gov, who.int, or the relevant national regulator). Use only a real, correct URL you are confident exists. NEVER link to a store, shop, brand, marketplace, competitor or any business. If nothing fits, add no outbound link.\n"
+        : "Do not add any outbound external links.\n";
+    return "Write a ".BLOG_WORDS." word SEO blog article titled \"$ti\" for ".brand().", which sells ".STORE_NICHE.". Write for real buyers and to rank in Google. "
+        .voice_rules().compliance_clause()
+        ."STRUCTURE: valid HTML only — ONE <h1> (the title), then <h2>/<h3> sections, short scannable paragraphs, at least one <ul> list, and a short FAQ of 2-3 <h3> questions with answers.\n"
+        ."INTERNAL LINKS: weave natural, in-context <a> links (not a link dump) to these pages of OUR OWN site, using the EXACT URLs shown, only where they genuinely fit:\n".($links?:"  (none available yet)\n")
+        .$ext.html_quote_rule()
+        ."Return JSON: {\"content\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}"; }
 
 // ---------------------------------------------------------------------------
 // Reference store (optional) — fetched ONCE, gives the AI a real market anchor
@@ -373,13 +645,14 @@ function reference_context(){ static $ctx=null; if($ctx!==null) return $ctx; $ct
 // Product prompt (dynamic — only requested fields)
 // ---------------------------------------------------------------------------
 function product_prompt($ctx,$need){ $cur=currency(); $keys=[]; $req='';
-    if($need['short']){ $req.="- short_description: marketing HTML, ~".SHORT_DESC_WORDS." words.\n"; $keys[]='short_description'; }
-    if($need['long']){ $req.="- long_description: valid HTML, ".LONG_DESC_MIN_WORDS."+ words, with <h2> Overview, <h2> Key Features (a <ul>), <h2> Specifications (a small <table>), <h2> FAQ (3 <h3> question + <p> answer), closing CTA.\n"; $keys[]='long_description'; }
+    if($need['short']){ $req.="- short_description: marketing HTML, ".words_phrase(SHORT_DESC_WORDS).".\n"; $keys[]='short_description'; }
+    if($need['long']){ $req.="- long_description: valid HTML, ".words_phrase(LONG_DESC_WORDS).", with <h2> Overview, <h2> Key Features (a <ul>), <h2> Specifications (a small <table>), <h2> FAQ (3 <h3> question + <p> answer), closing CTA.\n"; $keys[]='long_description'; }
     if($need['meta']){ $req.="- meta_title (<=60 chars, end ' | ".brand()."'), meta_description (<=155 chars, focus keyword), focus_keyword.\n"; array_push($keys,'meta_title','meta_description','focus_keyword'); }
     if($need['tags']){ $req.="- tags: 3-5 short relevant tags.\n"; $keys[]='tags'; }
     if($need['price']){ if(PRODUCT_TYPE==='variable'){ $req.="- attribute: the measurement dimension with unit (e.g. 'Dosage (mg)', 'Volume (L)', 'Quantity'). variations: 2-5 {label,price} where label is a value in that unit (e.g. '10mg','5L','2') and price is a plain number in $cur.\n"; array_push($keys,'attribute','variations'); } else { $req.="- price: realistic AVERAGE MARKET PRICE, plain number in $cur.\n"; $keys[]='price'; } }
     if($need['unit']){ $req.="- unit: what ONE purchase includes, with measurement (e.g. 'per 10 mg vial', 'per 5 L container', 'each (1 unit)').\n"; $keys[]='unit'; }
-    if($need['image']){ $req.="- image_subject: literal physical form/packaging for a product photo, matching the unit (e.g. 'a single 10 mg amber glass vial', 'a complete automotive engine').\n"; $keys[]='image_subject'; }
+    if($need['image']){ $req.="- image_subject: from the TITLE and description, describe this product's real physical form and packaging for a studio product photo with NO person, NO hands and NO face in the frame. If it is a PACKAGED good (food, drink, cosmetic, powder, liquid, supplement, etc.), name the exact package (e.g. 'a stand-up matte foil snack pouch', 'a clear glass bottle with a cap', 'a frosted cosmetic jar', 'a printed kraft carton') and say the label is MINIMAL with the large product name \"{$ctx['title']}\" as the ONLY text on it, and NO other writing at all: NO brand slogan, NO tagline, NO net weight/volume, NO ingredient list, NO directions, NO barcode, NO small print and NO secondary lines (the rest of the label is plain and empty, so no small filler text can be misspelled). If it is an UNPACKAGED item (hand tool, machine part, engine, furniture, electronics, raw hardware, etc.), describe the bare product with NO packaging and NO label. Keep it to one concise phrase.\n"; $keys[]='image_subject';
+        $req.="- image_use: the product's core use or benefit as a punchy 1-3 word phrase for the FRONT of the pack (e.g. 'Pain Relief', 'Deep Sleep', 'Muscle Recovery', 'Daily Cleanser'). Plain words only.\n"; $keys[]='image_use'; }
     $sales=SALES_ORIENTED?"Sales-oriented: weave in natural buy/shop/for-sale phrasing and the focus keyword early.":"Informative and helpful.";
     return "You are an expert e-commerce SEO copywriter for ".brand().", selling ".STORE_NICHE.". $sales\n"
         ."Use this product's real context:\nTITLE: {$ctx['title']}\nCATEGORY: {$ctx['cat']}\nEXISTING SHORT: {$ctx['short']}\nEXISTING LONG: {$ctx['long']}\nCURRENCY: $cur\n"
@@ -409,6 +682,7 @@ function ai_map_chunk($chunk,$cats){ $lines=''; foreach($chunk as $c){ $lines.="
 function find_or_create_page($slug,$title){ $p=get_page_by_path($slug); if($p) return (int)$p->ID;
     return (int)wp_insert_post(['post_type'=>'page','post_name'=>$slug,'post_title'=>$title,'post_status'=>PUBLISH_STATE,'post_content'=>'']); }
 function write_page_via_ai($slug,$title,$prompt){ $pid=find_or_create_page($slug,$title); if(!$pid) return;
+    if(get_post_meta($pid,'_wcm_page_done',true)){ out("   [skip] $title (already done; RESET_PROGRESS to redo)",'#888'); return; }
     $cur=trim((string)get_post_field('post_content',$pid)); if($cur!=='' && !OVERWRITE_PAGES){ out("   [skip] $title already has content (OVERWRITE_PAGES=false)",'#888'); return; }
     [$d,$err]=ai_json($prompt); if(!$d||empty($d['content'])){ out("   [skip] $title — ".($err?:'no content'),'#f66'); return; }
     $c=append_disclaimer(dedash((string)$d['content']));
@@ -416,26 +690,59 @@ function write_page_via_ai($slug,$title,$prompt){ $pid=find_or_create_page($slug
     if(!empty($d['meta_title'])) update_post_meta($pid,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
     if(!empty($d['meta_description'])) update_post_meta($pid,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
     if(!empty($d['focus_keyword'])) update_post_meta($pid,'rank_math_focus_keyword',(string)$d['focus_keyword']);
-    out("   [ok] $title",'#6f6'); }
-function page_prompt($what,$extra=''){ return "Write the '$what' page for ".brand().", a US-based online store selling ".STORE_NICHE.". "
-    ."$extra\n".voice_rules().compliance_clause()
+    update_post_meta($pid,'_wcm_page_done',1); out("   [ok] $title",'#6f6'); }
+// dynamic page prompt: a random angle + structure each time so pages don't read like the same template
+function page_prompt($what,$extra=''){
+    $angles=['Open with a short real-world scenario a buyer relates to.','Lead with the single most useful fact, then expand.','Use a warm, first-person brand voice.','Open with a promise, then prove it with specifics.','Use a question-then-answer rhythm.'];
+    $structs=['3-5 <h2> sections of varied length.','a mix of short paragraphs and one <ul> list.','a couple of <h2> sections plus a short FAQ (<h3> + <p>).','narrative paragraphs plus a small <table> where it genuinely helps.'];
+    $angle=$angles[mt_rand(0,count($angles)-1)]; $struct=$structs[mt_rand(0,count($structs)-1)];
+    return "Write the '$what' page for ".brand().", a US-based online store selling ".STORE_NICHE.". "
+    ."$extra\nMAKE IT DISTINCT — not a boilerplate template. Approach: $angle Structure: $struct Vary the headings and wording so it does not read like the store's other pages. Keep it a standard, professional, trustworthy company page, ".words_phrase('450-800').".\n"
+    .company_facts()
+    .voice_rules().compliance_clause()
     ."Valid HTML, proper heading hierarchy (one <h1>, then <h2>). Use SINGLE quotes for HTML attributes. "
     ."Return ONE valid JSON object: {\"content\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"} — no comments, no trailing commas, single-line HTML value."; }
 
+// --- Flatsome detection + single-column wrapper: keeps page content in a centered, constrained column
+//     instead of running edge-to-edge. On Flatsome sites it uses the theme's section/row/col; elsewhere a max-width div.
+function is_flatsome(){ static $f=null; if($f===null){ $t=function_exists('wp_get_theme')?wp_get_theme():null;
+    $f=$t?(stripos((string)$t->get('Name'),'flatsome')!==false || stripos((string)$t->get_template(),'flatsome')!==false):false; } return $f; }
+function page_wrap($html){ $html=(string)$html; if(trim($html)==='') return $html;
+    if(is_flatsome()||HOMEPAGE_FORMAT==='flatsome') return "[section padding=\"60px\"]\n[row h_align=\"center\"]\n[col span=\"8\" span__sm=\"12\"]\n".$html."\n[/col]\n[/row]\n[/section]\n";
+    return "<div style='max-width:820px;margin:0 auto;padding:40px 20px'>".$html."</div>"; }
+
+// normalize intro_paragraphs: accept an array, OR a single string (split on blank lines / newlines so it still renders as paragraphs)
+function intro_paras($v){ if(is_array($v)) return $v; $s=trim((string)$v); if($s==='') return [];
+    $parts=preg_split('/\n\s*\n|\r\n\s*\r\n/',$s); if(count($parts)<2) $parts=preg_split('/\r\n|\n|\r/',$s);
+    return array_values(array_filter(array_map('trim',$parts),fn($x)=>$x!=='')); }
+
 // --- Flatsome homepage assembler (from the homepage builder) ---
 function build_flatsome($f,$cats,$prods){ $shop=shop_url(); $btn=esc($f['cta_button']??'Shop Now'); $o='';
-    $o.="[section label=\"Hero\" padding=\"60px\"]\n[row]\n[col span__sm=\"12\"]\n<h1>".esc($f['hero_headline']??brand())."</h1>\n<p>".esc($f['hero_intro']??'')."</p>\n[button text=\"$btn\" link=\"".esc_url($shop)."\"]\n[/col]\n[/row]\n[/section]\n";
-    if($cats){ $li=''; foreach($cats as $c){ if(!empty($c['url'])) $li.='<li><a href="'.esc_url($c['url']).'">'.esc($c['name']).'</a></li>'; }
-        $o.="[section label=\"Categories\"]\n[row]\n[col span__sm=\"12\"]\n<h2>".esc($f['categories_heading']??'Shop by Category')."</h2>\n<ul>$li</ul>\n[/col]\n[/row]\n[/section]\n"; }
+    // HERO — centered headline, lead line, primary CTA (text + button centered together)
+    $o.="[section label=\"Hero\" padding=\"70px\" bg_color=\"#f7f7f9\"]\n[row h_align=\"center\"]\n[col span=\"10\" span__sm=\"12\"]\n<div style='text-align:center'>\n<h1>".esc($f['hero_headline']??brand())."</h1>\n<p style='font-size:1.15em'>".esc($f['hero_intro']??'')."</p>\n[button text=\"$btn\" size=\"large\" link=\"".esc_url($shop)."\"]\n</div>\n[/col]\n[/row]\n[/section]\n";
+    // INTRO — heading + 2-3 substantial paragraphs, centered narrow column so it reads like real editorial content
+    $ip=intro_paras($f['intro_paragraphs']??null);
+    if($ip){ $ptxt=''; foreach($ip as $para){ $pp=esc(is_array($para)?($para['text']??''):$para); if(trim($pp)!=='') $ptxt.="<p>$pp</p>\n"; }
+        if($ptxt!==''){ $o.="[section label=\"Intro\" padding=\"45px\"]\n[row h_align=\"center\"]\n[col span=\"8\" span__sm=\"12\"]\n".(!empty($f['intro_heading'])?"<h2 style='text-align:center'>".esc($f['intro_heading'])."</h2>\n":'').$ptxt."[/col]\n[/row]\n[/section]\n"; } }
+    // FEATURED PRODUCTS — moved up so the page leads with product visuals, not a wall of category links
+    if($prods){ $ids=implode(',',array_map(fn($p)=>(int)$p['id'],$prods)); $o.="[section label=\"Featured\" padding=\"35px\"]\n[row]\n[col span__sm=\"12\"]\n<h2 style='text-align:center'>".esc($f['featured_heading']??'Featured Products')."</h2>\n[ux_products ids=\"$ids\"]\n[/col]\n[/row]\n[/section]\n"; }
+    // WHY US — trust points as equal cards
     $pts=is_array($f['why_us_points']??null)?$f['why_us_points']:[];
-    if($pts){ $sp=count($pts)>=3?4:(count($pts)===2?6:12); $o.="[section label=\"Why Us\"]\n[row]\n[col span__sm=\"12\"]\n<h2>".esc($f['why_us_heading']??'Why Choose Us')."</h2>\n[/col]\n[/row]\n[row]\n";
+    if($pts){ $sp=count($pts)>=3?4:(count($pts)===2?6:12); $o.="[section label=\"Why Us\" padding=\"45px\" bg_color=\"#f7f7f9\"]\n[row]\n[col span__sm=\"12\"]\n<h2 style='text-align:center'>".esc($f['why_us_heading']??'Why Choose Us')."</h2>\n[/col]\n[/row]\n[row]\n";
         foreach($pts as $pt){ $t=esc(is_array($pt)?($pt['title']??''):$pt); $dd=esc(is_array($pt)?($pt['text']??''):''); $o.="[col span=\"$sp\" span__sm=\"12\"]\n[featured_box]\n<h3>$t</h3>\n".($dd!==''?"<p>$dd</p>\n":'')."[/featured_box]\n[/col]\n"; }
         $o.="[/row]\n[/section]\n"; }
-    if($prods){ $ids=implode(',',array_map(fn($p)=>(int)$p['id'],$prods)); $o.="[section label=\"Featured\"]\n[row]\n[col span__sm=\"12\"]\n<h2>".esc($f['featured_heading']??'Featured Products')."</h2>\n[ux_products ids=\"$ids\"]\n[/col]\n[/row]\n[/section]\n"; }
-    if(!empty($f['about_text'])){ $o.="[section label=\"About\"]\n[row]\n[col span__sm=\"12\"]\n<h2>".esc($f['about_heading']??'About Us')."</h2>\n<p>".esc($f['about_text'])."</p>\n[/col]\n[/row]\n[/section]\n"; }
-    if(is_array($f['faq']??null)&&$f['faq']){ $q="<h2>Frequently Asked Questions</h2>\n"; foreach($f['faq'] as $qa){ $qq=esc($qa['q']??''); if($qq)$q.="<h3>$qq</h3>\n<p>".esc($qa['a']??'')."</p>\n"; } $o.="[section label=\"FAQ\"]\n[row]\n[col span__sm=\"12\"]\n".$q."[/col]\n[/row]\n[/section]\n"; }
-    if(!empty($f['closing_cta'])){ $o.="[section label=\"CTA\"]\n[row]\n[col span__sm=\"12\"]\n<p>".esc($f['closing_cta'])."</p>\n[button text=\"$btn\" link=\"".esc_url($shop)."\"]\n[/col]\n[/row]\n[/section]\n"; }
-    if(COMPLIANCE_MODE&&DISCLAIMER_HTML) $o.="[section]\n[row]\n[col span__sm=\"12\"]\n".DISCLAIMER_HTML."\n[/col]\n[/row]\n[/section]\n";
+    // CATEGORIES — compact button grid (4 across on desktop, 2 on mobile) instead of one long bullet list
+    if($cats){ $head=esc($f['categories_heading']??'Shop by Category');
+        $o.="[section label=\"Categories\" padding=\"35px\"]\n[row]\n[col span__sm=\"12\"]\n<h2 style='text-align:center'>$head</h2>\n[/col]\n[/row]\n[row]\n";
+        foreach($cats as $c){ if(empty($c['url'])) continue; $o.="[col span=\"3\" span__sm=\"6\"]\n[button text=\"".esc($c['name'])."\" style=\"outline\" expand=\"true\" link=\"".esc_url($c['url'])."\"]\n[/col]\n"; }
+        $o.="[/row]\n[/section]\n"; }
+    // ABOUT
+    if(!empty($f['about_text'])){ $o.="[section label=\"About\" padding=\"45px\" bg_color=\"#f7f7f9\"]\n[row h_align=\"center\"]\n[col span=\"8\" span__sm=\"12\"]\n<h2 style='text-align:center'>".esc($f['about_heading']??'About Us')."</h2>\n<p>".esc($f['about_text'])."</p>\n[/col]\n[/row]\n[/section]\n"; }
+    // FAQ
+    if(is_array($f['faq']??null)&&$f['faq']){ $q="<h2 style='text-align:center'>Frequently Asked Questions</h2>\n"; foreach($f['faq'] as $qa){ $qq=esc($qa['q']??''); if($qq)$q.="<h3>$qq</h3>\n<p>".esc($qa['a']??'')."</p>\n"; } $o.="[section label=\"FAQ\" padding=\"45px\"]\n[row h_align=\"center\"]\n[col span=\"8\" span__sm=\"12\"]\n".$q."[/col]\n[/row]\n[/section]\n"; }
+    // CLOSING CTA — full-width band
+    if(!empty($f['closing_cta'])){ $o.="[section label=\"CTA\" padding=\"55px\" bg_color=\"#f7f7f9\"]\n[row h_align=\"center\"]\n[col span=\"10\" span__sm=\"12\"]\n<div style='text-align:center'>\n<h3>".esc($f['closing_cta'])."</h3>\n[button text=\"$btn\" size=\"large\" link=\"".esc_url($shop)."\"]\n</div>\n[/col]\n[/row]\n[/section]\n"; }
+    if(COMPLIANCE_MODE&&DISCLAIMER_HTML) $o.="[section padding=\"20px\"]\n[row h_align=\"center\"]\n[col span=\"9\" span__sm=\"12\"]\n<small>".DISCLAIMER_HTML."</small>\n[/col]\n[/row]\n[/section]\n";
     return $o; }
 
 function resolve_front(){ $f=(get_option('show_on_front')==='page')?(int)get_option('page_on_front'):0; if($f&&get_post($f)) return $f;
@@ -452,9 +759,10 @@ global $wpdb;   // make the DB handle explicit for every phase below (used in ca
 // it's cheap (just category/tag IDs) and makes the grouping + tag checks below cache hits. Ordered by ID
 // so the batch offset lands on the same product on every refresh.
 $P=[]; foreach(get_posts(['post_type'=>'product','post_status'=>PRODUCT_STATUSES,'numberposts'=>-1,'orderby'=>'ID','order'=>'ASC','update_post_meta_cache'=>false]) as $po){
-    $P[$po->ID]=['title'=>$po->post_title,'short'=>$po->post_excerpt]; }
+    $P[$po->ID]=['title'=>$po->post_title,'short'=>$po->post_excerpt,'status'=>$po->post_status]; }
 $ids=array_keys($P);
 out('Found '.count($ids).' products');
+if($ids) update_object_term_cache($ids,'product');   // ONE bulk load of every product's categories + tags, so the many get_the_terms() calls below (primary-category map, tag checks, category-safety reads) are cache hits instead of O(N) per-product queries
 
 if (ENABLE_LAWFUL_USE_GUARD) { $hay='';
     foreach($P as $d){ $hay.=strtolower($d['title']).' '; }
@@ -465,17 +773,17 @@ if (ENABLE_LAWFUL_USE_GUARD) { $hay='';
 // ---- RESET / REPROCESS (fires ONCE per arming; independent of which phases are enabled) ------------
 delete_option('wcm_offset');   // retire the old positional-offset resume
 if(RESET_PROGRESS || REPROCESS_IDS){ if(!get_option('wcm_reset_done')){   // a saved marker stops it repeating on refresh
-    if(RESET_PROGRESS){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done'"); $wpdb->query("DELETE FROM {$wpdb->termmeta} WHERE meta_key='_wcm_cat_done'"); out("\nRESET_PROGRESS — progress wiped ONCE; reprocessing every product + category.",'#fa0'); }
+    if(RESET_PROGRESS){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ('_wcm_done','_wcm_page_done','_wcm_img_done')"); $wpdb->query("DELETE FROM {$wpdb->termmeta} WHERE meta_key='_wcm_cat_done'"); delete_option('wcm_grouping_done'); delete_option('wcm_stock_done'); delete_option('wcm_foreign_done'); delete_option('wcm_branding_done'); delete_option('wcm_blog_done'); delete_option('wcm_blog_titles'); delete_option('wcm_blog_start'); out("\nRESET_PROGRESS — progress wiped ONCE; reprocessing everything (products, categories, grouping, stock, foreign-links, pages, images, branding, blog). Existing blog posts are kept; a fresh title list is generated.",'#fa0'); }
     if(REPROCESS_IDS){ $rids=implode(',',array_map('intval',(array)REPROCESS_IDS)); if($rids!==''){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done' AND post_id IN ($rids)"); out("\nREPROCESS_IDS — redoing ".count((array)REPROCESS_IDS)." specific product(s) ONCE.",'#fa0'); } }
     update_option('wcm_reset_done',1,false); } }
 else delete_option('wcm_reset_done');   // both off = re-arm for next time
 
 // ---- PHASE: CATEGORIES (single catalog pass) -------------------------------
 $primary=[]; // pid => term_id
-// on a batch resume (some products already flagged done) categories were built on the first pass — don't redo the AI mapping
-$cat_resume_skip = DO_CATEGORIES && !RESET_PROGRESS && MAX_PRODUCTS_PER_RUN>0
-    && (int)$wpdb->get_var("SELECT 1 FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done' LIMIT 1")>0;
-if ($cat_resume_skip) out("\n--- Categories --- (already built on the first batch; skipping)",'#888');
+// grouping is built ONCE and flagged; on later runs/refreshes we skip it (the AI would otherwise pick different
+// category names + mappings each time, so categories would keep changing). RESET_PROGRESS clears the flag to rebuild.
+$cat_resume_skip = DO_CATEGORIES && get_option('wcm_grouping_done');
+if ($cat_resume_skip) out("\n--- Categories --- (already grouped; skipping. Set RESET_PROGRESS=true to rebuild)",'#888');
 if (DO_CATEGORIES && !$cat_resume_skip) {
     out("\n--- Categories ---",'#6cf');
     $cats = (CATEGORY_MODE==='manual') ? array_values(array_filter(array_map('trim',CATEGORY_LIST)))
@@ -490,6 +798,7 @@ if (DO_CATEGORIES && !$cat_resume_skip) {
             wp_set_object_terms($pid,[(int)$termid[$cn]], 'product_cat', REPLACE_PRODUCT_CATEGORIES ? false : true);
             $primary[$pid]=(int)$termid[$cn]; $done++; }
         out("   grouped $done products into ".count($cats).' categories','#6f6');
+        update_option('wcm_grouping_done',1,false);   // built once — don't re-group on refresh
     }
 }
 // fill primary term for products not just categorized (use existing first product_cat)
@@ -498,6 +807,7 @@ foreach($P as $pid=>$d){ if(isset($primary[$pid])) continue; $tt=get_the_terms($
 // interlink groups by primary term
 $groups=[]; foreach($primary as $pid=>$tid){ $groups[$tid][]=$pid; }
 function related_of($pid,$primary,$groups,$P){ $out=[]; foreach(($groups[$primary[$pid]]??[]) as $o){ if($o==$pid) continue;
+    if(($P[$o]['status']??'')!=='publish') continue;   // only link to publicly visible products (skip draft/pending/private)
     $out[]=['name'=>$P[$o]['title'],'url'=>site_link(get_permalink($o))]; if(count($out)>=INTERLINKS_PER_PRODUCT) break; } return $out; }
 
 // ---- PHASE: PRODUCTS -------------------------------------------------------
@@ -508,7 +818,7 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
     // RESUME: each finished product carries a '_wcm_done' flag and is skipped. One query loads the whole done-set, so a
     // refresh continues exactly where it left off (even after a server timeout) and never re-touches a finished product
     // — so content is never duplicated. MAX_PRODUCTS_PER_RUN just caps how many NEW products to do per run (0 = all).
-    $done=array_flip((array)$wpdb->get_col("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done'"));
+    $done=array_flip(array_intersect(array_map('intval',(array)$wpdb->get_col("SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done'")),$ids));   // intersect with the CURRENT catalog so stale flags (trashed/removed products) can't inflate the count and falsely mark the job complete
     $todo=[]; foreach($P as $pid=>$row){ if(!isset($done[$pid])){ $todo[]=$pid; if(MAX_PRODUCTS_PER_RUN>0 && count($todo)>=MAX_PRODUCTS_PER_RUN) break; } }
     out('   '.count($done).' already done · '.count($todo).' to do now · '.max(0,$tot-count($done)-count($todo)).' left after this run','#6cf');
     if($todo) update_meta_cache('post',$todo);
@@ -518,14 +828,15 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
         $has_var=$p->is_type('variable') && !empty($p->get_children());   // already has variations?
         $tid=$primary[$pid]; $tobj=$tid?get_term($tid):null; $catname=($tobj&&!is_wp_error($tobj))?$tobj->name:''; $cat_url=$tid?get_term_link($tid):''; if(is_wp_error($cat_url)) $cat_url=''; $cat_url=site_link($cat_url);
         $meta_empty = DO_META && !OVERWRITE_META && (!get_post_meta($pid,'rank_math_title',true)||!get_post_meta($pid,'rank_math_description',true)||!get_post_meta($pid,'rank_math_focus_keyword',true));
-        $need=['short'=>DO_SHORT_DESC&&(OVERWRITE_SHORT||trim($short)===''||strpos($short,APPEND_SIG)===false),
-               'long'=>DO_LONG_DESC&&(OVERWRITE_LONG||trim($long)===''||strpos($long,APPEND_SIG)===false),
+        $need=['short'=>DO_SHORT_DESC&&field_need($short,SHORT_DESC_MODE),
+               'long'=>DO_LONG_DESC&&field_need($long,LONG_DESC_MODE),
                'meta'=>DO_META&&(OVERWRITE_META||$meta_empty),
                'tags'=>DO_TAGS&&(OVERWRITE_TAGS||!get_the_terms($pid,'product_tag')),   // get_the_terms hits the primed cache — no per-product query
                'price'=>DO_PRICE&&(OVERWRITE_PRICE||(PRODUCT_TYPE==='variable'?!$has_var:($price===''||$price===null))),
                'image'=>false,'unit'=>false];
-        $need['unit']=($need['short']&&SHORT_DESC_INCLUDE_UNIT)||$need['price']||DO_IMAGE;
-        $need['image']=DO_IMAGE; // request image_subject when generating
+        $will_image = DO_IMAGE && !get_post_meta($pid,'_wcm_img_done',true) && !(SKIP_IF_HAS_IMAGE&&has_post_thumbnail($pid));   // decide ONCE whether an image will really be generated
+        $need['unit']=($need['short']&&SHORT_DESC_INCLUDE_UNIT)||$need['price']||$will_image;
+        $need['image']=$will_image; // only ask the AI for image_subject/image_use when an image will actually be made (saves tokens on products that already have one)
         $need_ai=$need['short']||$need['long']||$need['meta']||$need['tags']||$need['price'];
         if(!$need_ai && !DO_INTERLINKS && !DO_IMAGE && !REMOVE_FOREIGN_LINKS){ out("[$i/$tot] skip: $name",'#888'); update_post_meta($pid,'_wcm_done',1); $handled++; continue; }
         out("[$i/$tot] $name",'#ddd');
@@ -552,15 +863,16 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
 
         $unit=trim((string)($data['unit']??'')); if($unit!=='') update_post_meta($pid,'_unit_of_sale',$unit);
         if(!empty($data['image_subject'])) update_post_meta($pid,'_image_subject',(string)$data['image_subject']);
+        if(!empty($data['image_use'])) update_post_meta($pid,'_image_use',(string)$data['image_use']);   // middle label line (e.g. 'Pain Relief')
 
         $dirty=false;
         // short description (+ optional unit line)
         if($need['short']){ $ns=dedash(demote_h1((string)($data['short_description']??''))); if(SHORT_DESC_INCLUDE_UNIT&&$unit!==''&&stripos($ns,'sold as')===false) $ns.="\n<p><strong>Sold as:</strong> ".esc($unit).'.</p>';
-            [$val,$ch]=apply_text($p->get_short_description(),$ns,OVERWRITE_SHORT); if($ch){ $p->set_short_description($val); $dirty=true; } }
+            [$val,$ch]=apply_text($p->get_short_description(),$ns,SHORT_DESC_MODE); if($ch){ $p->set_short_description($val); $dirty=true; } }
         if(REMOVE_FOREIGN_LINKS){ $sd=$p->get_short_description(); $sdc=strip_foreign_links($sd); if($sdc!==$sd){ $p->set_short_description($sdc); $dirty=true; } }
         // long description (+ interlinks + disclaimer)
         $long0=$p->get_description(); $long_cur=$long0;
-        if($need['long']){ $nl=dedash(demote_h1((string)($data['long_description']??''))); [$val,$ch]=apply_text($long_cur,$nl,OVERWRITE_LONG); if($ch){ $long_cur=$val; } }
+        if($need['long']){ $nl=dedash(demote_h1((string)($data['long_description']??''))); [$val,$ch]=apply_text($long_cur,$nl,LONG_DESC_MODE); if($ch){ $long_cur=$val; } }
         if(DO_INTERLINKS){ $long_cur=inject_links($long_cur,related_of($pid,$primary,$groups,$P),$cat_url,$catname); }
         $long_cur=append_disclaimer($long_cur);
         if(REMOVE_FOREIGN_LINKS) $long_cur=strip_foreign_links($long_cur);
@@ -578,8 +890,10 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
             if($tg){ $ex=[]; if(!OVERWRITE_TAGS){ $gt=get_the_terms($pid,'product_tag'); if(is_array($gt)) $ex=wp_list_pluck($gt,'name'); }
                 wp_set_object_terms($pid,array_values(array_unique(array_merge($ex,$tg))),'product_tag',false); } }
 
-        if(DO_IMAGE && !(SKIP_IF_HAS_IMAGE&&has_post_thumbnail($pid))){ [$u,$e]=ideogram_url(image_subject($pid,$name,$catname).'. '.IMAGE_STYLE.'.');
-            if($u){ [$att,$e2]=attach_image($u,$pid,$name.' product image',$name); if($att) out('   [image ok]','#6f6'); else out("   [image] $e2",'#fa0'); } else out("   [image] $e",'#fa0'); }
+        if($will_image){ [$u,$e]=ideogram_url(image_subject($pid,$name,$catname).'. '.image_style().'.');
+            $use=trim((string)get_post_meta($pid,'_image_use',true)); if($use==='' && IMAGE_LABEL_USE_FALLBACK) $use=$catname;   // middle label line: AI 'use' phrase, else the category
+            $label=['name'=>$name,'use'=>$use,'brand'=>brand()];
+            if($u){ [$att,$e2]=attach_image($u,$pid,$name.' product image',$name,$label); if($att){ update_post_meta($pid,'_wcm_img_done',1); out('   [image ok]','#6f6'); } else out("   [image] $e2",'#fa0'); } else out("   [image] $e",'#fa0'); }
 
         out('   [ok]'.($made_var?' + variations':''),'#6f6'); $processed++; $handled++;
         update_post_meta($pid,'_wcm_done',1);   // flag finished NOW so a server timeout keeps this product's progress
@@ -598,7 +912,7 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
 
 // ---- PHASE: FORCE IN STOCK (all products + variations) ---------------------
 // WooCommerce core, theme-independent — Flatsome only displays whatever status we set here.
-if(!$batched && FORCE_IN_STOCK){ out("\n--- Forcing stock status: In stock ---",'#6cf'); $sn=0;
+if(!$batched && FORCE_IN_STOCK){ if(get_option('wcm_stock_done')) out("\n--- Force in stock --- (already done; RESET_PROGRESS to redo)",'#888'); else { out("\n--- Forcing stock status: In stock ---",'#6cf'); $sn=0;
     // Set BOTH manage-stock OFF and status IN STOCK on the SAME product object, then save once. Turning off
     // manage-stock is what makes it stick — otherwise WC re-derives "out of stock" from a 0 quantity. save()
     // also updates WC's product lookup table + clears caches so the shop reflects it. Only products/variations
@@ -616,13 +930,13 @@ if(!$batched && FORCE_IN_STOCK){ out("\n--- Forcing stock status: In stock ---",
         $kt=get_the_terms($pp,'product_cat'); $keep=is_array($kt)?wp_list_pluck($kt,'term_id'):[];   // SAFETY: this save must never blank categories
         if($keep && array_diff($keep,$pr->get_category_ids())) $pr->set_category_ids($keep);
         $pr->save(); $sn++; }
-    out("   set $sn products/variations in stock",'#6f6'); }
+    out("   set $sn products/variations in stock",'#6f6'); update_option('wcm_stock_done',1,false); } }
 
 // ---- PHASE: REMOVE FOREIGN LINKS (categories + pages + posts) --------------
-if(!$batched && REMOVE_FOREIGN_LINKS){ out("\n--- Removing foreign links ---",'#6cf'); $fn=0;
+if(!$batched && REMOVE_FOREIGN_LINKS){ if(get_option('wcm_foreign_done')) out("\n--- Remove foreign links --- (already done; RESET_PROGRESS to redo)",'#888'); else { out("\n--- Removing foreign links ---",'#6cf'); $fn=0;
     foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false]) as $t){ $d=(string)$t->description; $c=strip_foreign_links($d); if($c!==$d){ wp_update_term($t->term_id,'product_cat',['description'=>$c]); $fn++; } }
-    foreach(get_posts(['post_type'=>['page','post'],'post_status'=>'publish','numberposts'=>-1,'fields'=>'ids']) as $pp){ $d=(string)get_post_field('post_content',$pp); $c=strip_foreign_links($d); if($c!==$d){ wp_update_post(['ID'=>$pp,'post_content'=>$c]); $fn++; } }
-    out("   cleaned $fn category/page/post items (product descriptions were cleaned in the product pass)",'#6f6'); }
+    foreach(get_posts(['post_type'=>'page','post_status'=>'publish','numberposts'=>-1,'fields'=>'ids']) as $pp){ $d=(string)get_post_field('post_content',$pp); $c=strip_foreign_links($d); if($c!==$d){ wp_update_post(['ID'=>$pp,'post_content'=>$c]); $fn++; } }   // pages only: blog posts curate their own links (one authoritative .gov/.edu outbound is kept on purpose), so this blanket sweep must not strip it
+    out("   cleaned $fn category/page/post items (product descriptions were cleaned in the product pass)",'#6f6'); update_option('wcm_foreign_done',1,false); } }
 
 // ---- PHASE: CATEGORY DESCRIPTIONS ------------------------------------------
 if(!$batched && DO_CATEGORY_CONTENT){ out("\n--- Category descriptions ---",'#6cf');
@@ -630,7 +944,7 @@ if(!$batched && DO_CATEGORY_CONTENT){ out("\n--- Category descriptions ---",'#6c
         if(get_term_meta($t->term_id,'_wcm_cat_done',true)){ out("   [skip] {$t->name} (already done — set RESET_PROGRESS=true to redo)",'#888'); continue; }
         $has=trim((string)$t->description)!==''; if($has&&!OVERWRITE_CATEGORY_DESC){ out("   [skip] {$t->name}",'#888'); continue; }
         $plinks=[]; foreach(($groups[$t->term_id]??array_slice(get_posts(['post_type'=>'product','fields'=>'ids','numberposts'=>8,'tax_query'=>[['taxonomy'=>'product_cat','field'=>'term_id','terms'=>$t->term_id]]]),0,8)) as $pp){ $plinks[]=['name'=>get_the_title($pp),'url'=>site_link(get_permalink($pp))]; if(count($plinks)>=8) break; }
-        [$d,$err]=ai_json("Write an SEO description (~200 words) for the product category \"{$t->name}\" at ".brand()." selling ".STORE_NICHE.". ".voice_rules().compliance_clause()."Open with the focus keyword; explain what it covers and why buy here; one <h2>. No invented links. ".html_quote_rule()."Return JSON: {\"description\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}");
+        [$d,$err]=ai_json("Write an SEO description, ".words_phrase('180-260').", for the product category \"{$t->name}\" at ".brand()." selling ".STORE_NICHE.". ".voice_rules().compliance_clause()."Open with the focus keyword; explain what it covers and why buy here; one <h2>. No invented links. ".html_quote_rule()."Return JSON: {\"description\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}");
         if(!$d||empty($d['description'])){ out("   [skip] {$t->name} — ".($err?:'no content'),'#f66'); continue; }
         $desc=dedash((string)$d['description']); $have=existing_hrefs($desc); $li='';
         foreach($plinks as $r){ if(!in_array($r['url'],$have,true)) $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; }
@@ -644,19 +958,25 @@ if(!$batched && DO_CATEGORY_CONTENT){ out("\n--- Category descriptions ---",'#6c
         else { update_term_meta($t->term_id,'_wcm_cat_done',1); out("   [ok] {$t->name} — wrote ".mb_strlen($desc)." chars, DB now holds ".mb_strlen((string)$svd),'#6f6'); } } }
 
 // ---- PHASE: PAGES (after products) -----------------------------------------
+$blog_incomplete=false;   // set true if the blog phase stops early (per-run cap, credit stop) so the file won't self-delete before all posts exist
 if(!$batched){
-    // featured products + category links for homepage
-    $topcats=[]; foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0]) as $t){ if(strtolower($t->slug)==='uncategorized') continue; $lk=get_term_link($t); if(!is_wp_error($lk)) $topcats[]=['name'=>$t->name,'url'=>site_link($lk)]; }
-    $feat=[]; foreach(array_slice(array_keys($P),0,6) as $pid){ $feat[]=['id'=>$pid,'name'=>$P[$pid]['title'],'url'=>site_link(get_permalink($pid))]; }
+    // featured products + category links — only built when the homepage is actually being written
+    $topcats=[]; $feat=[];
+    if(DO_HOMEPAGE){ foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0]) as $t){ if(strtolower($t->slug)==='uncategorized') continue; $lk=get_term_link($t); if(!is_wp_error($lk)) $topcats[]=['name'=>$t->name,'url'=>site_link($lk)]; }
+        foreach(array_keys($P) as $pid){ if(($P[$pid]['status']??'')!=='publish') continue;   // only feature publicly visible products
+            $feat[]=['id'=>$pid,'name'=>$P[$pid]['title'],'url'=>site_link(get_permalink($pid))]; if(count($feat)>=6) break; } }
 
     if(DO_HOMEPAGE){ out("\n--- Homepage ---",'#6cf'); $fid=resolve_front();
         $cur=trim((string)get_post_field('post_content',$fid));
-        if($cur!=='' && !OVERWRITE_HOMEPAGE){ out('   [skip] homepage has content (OVERWRITE_HOMEPAGE=false)','#888'); }
+        if(get_post_meta($fid,'_wcm_page_done',true)){ out('   [skip] homepage (already done; RESET_PROGRESS to redo)','#888'); }
+        elseif($cur!=='' && !OVERWRITE_HOMEPAGE){ out('   [skip] homepage has content (OVERWRITE_HOMEPAGE=false)','#888'); }
         else { $cl=''; foreach($topcats as $c){ $cl.='  - '.$c['name']."\n"; } $pl=''; foreach($feat as $f){ $pl.='  - '.$f['name']."\n"; }
-            [$d,$err]=ai_json("Write HOMEPAGE copy for ".brand()." selling ".STORE_NICHE.". Tagline: \"".tagline()."\".\nCategories:\n$cl\nFeatured:\n$pl\n".voice_rules().compliance_clause()."Plain text fields only (no HTML). Give 3-4 why_us_points and 3-4 faq. ".( "Return ONE valid JSON object, no comments/trailing commas, with keys: hero_headline, hero_intro, cta_button, categories_heading, why_us_heading, why_us_points (array of {title,text}), featured_heading, about_heading, about_text, faq (array of {q,a}), closing_cta, meta_title, meta_description, focus_keyword."));
+            [$d,$err]=ai_json("Write HOMEPAGE copy for ".brand()." selling ".STORE_NICHE.". Tagline: \"".tagline()."\".\nCategories:\n$cl\nFeatured:\n$pl\n".voice_rules().compliance_clause()."Plain text fields only (no HTML). Make hero_intro a substantial 2-3 sentence lead. Provide intro_heading (a short section heading, not 'Welcome to') and intro_paragraphs (2-3 rich paragraphs of 60-90 words each that introduce the store, what it sells and why buy here — this is the main content shown directly under the homepage headline). Give 3-4 why_us_points and 3-4 faq. ".( "Return ONE valid JSON object, no comments/trailing commas, with keys: hero_headline, hero_intro, intro_heading, intro_paragraphs (array of paragraph strings), cta_button, categories_heading, why_us_heading, why_us_points (array of {title,text}), featured_heading, about_heading, about_text, faq (array of {q,a}), closing_cta, meta_title, meta_description, focus_keyword."));
             if(!$d||empty($d['hero_headline'])){ out('   [skip] homepage — '.($err?:'no content'),'#f66'); }
             else { if(HOMEPAGE_FORMAT==='flatsome') $content=build_flatsome($d,$topcats,$feat);
-                else { $content='<h1>'.esc($d['hero_headline']).'</h1><p>'.esc($d['hero_intro']??'').'</p>'; $li=''; foreach($topcats as $c){ $li.='<li><a href="'.esc_url($c['url']).'">'.esc($c['name']).'</a></li>'; } if($li)$content.='<h2>'.esc($d['categories_heading']??'Shop by Category').'</h2><ul>'.$li.'</ul>'; $content=append_disclaimer($content); }
+                else { $content='<h1>'.esc($d['hero_headline']).'</h1><p>'.esc($d['hero_intro']??'').'</p>';
+                    $ip=intro_paras($d['intro_paragraphs']??null); if($ip){ if(!empty($d['intro_heading'])) $content.='<h2>'.esc($d['intro_heading']).'</h2>'; foreach($ip as $para){ $pp=esc(is_array($para)?($para['text']??''):$para); if(trim($pp)!=='') $content.='<p>'.$pp.'</p>'; } }
+                    $li=''; foreach($topcats as $c){ $li.='<li><a href="'.esc_url($c['url']).'">'.esc($c['name']).'</a></li>'; } if($li)$content.='<h2>'.esc($d['categories_heading']??'Shop by Category').'</h2><ul>'.$li.'</ul>'; $content=append_disclaimer($content); }
                 $content=dedash($content); $r=wp_update_post(['ID'=>$fid,'post_content'=>$content],true);
                 $svd=$wpdb->get_var($wpdb->prepare("SELECT post_content FROM {$wpdb->posts} WHERE ID=%d",$fid));   // verify STRAIGHT from DB
                 if(is_wp_error($r)) out('   [WRITE ERROR] homepage: '.$r->get_error_message(),'#f66');
@@ -664,40 +984,115 @@ if(!$batched){
                 if(!empty($d['meta_title'])) update_post_meta($fid,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
                 if(!empty($d['meta_description'])) update_post_meta($fid,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
                 if(!empty($d['focus_keyword'])) update_post_meta($fid,'rank_math_focus_keyword',(string)$d['focus_keyword']);
-                out('   [ok] homepage','#6f6'); } } }
+                update_post_meta($fid,'_wcm_page_done',1); out('   [ok] homepage','#6f6'); } } }
 
     if(DO_CONTACT){ out("\n--- Contact ---",'#6cf'); $pid=find_or_create_page('contact-us','Contact Us');
         $cur=trim((string)get_post_field('post_content',$pid));
-        if($cur!=='' && !OVERWRITE_PAGES){ out('   [skip] contact has content','#888'); }
-        else { $c='<h1>Contact '.esc(brand()).'</h1>'; $c.='<p>Have a question about our '.esc(STORE_NICHE).'? Reach us and we\'ll help.</p><ul>';
-            if(CONTACT_PHONE) $c.='<li><strong>Phone:</strong> '.esc(CONTACT_PHONE).'</li>';
-            if(CONTACT_EMAIL) $c.='<li><strong>Email:</strong> '.esc(CONTACT_EMAIL).'</li>';
-            $c.='<li><strong>Location:</strong> '.esc(CONTACT_LOCATION).'</li></ul>';
+        if(get_post_meta($pid,'_wcm_page_done',true)){ out('   [skip] contact (already done; RESET_PROGRESS to redo)','#888'); }
+        elseif($cur!=='' && !OVERWRITE_PAGES){ out('   [skip] contact has content','#888'); }
+        else { $bn=esc(brand()); $niche=esc(STORE_NICHE); $ph=esc(us_phone()); $ema=esc(site_email()); $loc=esc(CONTACT_LOCATION);
+            $lead="Questions about our $niche, an existing order, or a bulk enquiry? Our team is glad to help, and we usually reply within one business day.";
+            if(is_flatsome()){   // centered intro, then two clean cards: contact details + how we can help
+                $c ="[section padding=\"60px\"]\n[row h_align=\"center\"]\n[col span=\"9\" span__sm=\"12\"]\n<div style='text-align:center'>\n<h1>Contact $bn</h1>\n<p style='font-size:1.1em'>$lead</p>\n</div>\n[/col]\n[/row]\n";
+                $c.="[row]\n[col span=\"6\" span__sm=\"12\"]\n[featured_box]\n<h3>Reach us</h3>\n<p><strong>Email:</strong> <a href='mailto:$ema'>$ema</a></p>\n<p><strong>Phone:</strong> $ph</p>\n<p><strong>Location:</strong> $loc</p>\n<p><strong>Support hours:</strong> Monday to Friday, 9:00 AM to 5:00 PM</p>\n[button text=\"Email Us\" link=\"mailto:$ema\"]\n[/featured_box]\n[/col]\n";
+                $c.="[col span=\"6\" span__sm=\"12\"]\n[featured_box]\n<h3>How we can help</h3>\n<ul>\n<li>Product questions and recommendations</li>\n<li>Order status, shipping, and returns</li>\n<li>Bulk, wholesale, and business enquiries</li>\n<li>Feedback about your experience with $bn</li>\n</ul>\n<p>Prefer to write? Send a note any time and we'll get back to you quickly.</p>\n[/featured_box]\n[/col]\n[/row]\n[/section]\n";
+            } else { $inner ="<h1>Contact $bn</h1>\n<p>$lead</p>\n";
+                $inner.="<h3>Reach us</h3>\n<ul>\n<li><strong>Email:</strong> <a href='mailto:$ema'>$ema</a></li>\n<li><strong>Phone:</strong> $ph</li>\n<li><strong>Location:</strong> $loc</li>\n<li><strong>Support hours:</strong> Monday to Friday, 9:00 AM to 5:00 PM</li>\n</ul>\n";
+                $inner.="<h3>How we can help</h3>\n<ul>\n<li>Product questions and recommendations</li>\n<li>Order status, shipping, and returns</li>\n<li>Bulk, wholesale, and business enquiries</li>\n</ul>\n";
+                $c=page_wrap($inner); }   // non-Flatsome: clean single centered column
             $r=wp_update_post(['ID'=>$pid,'post_content'=>$c],true); $svd=$wpdb->get_var($wpdb->prepare("SELECT post_content FROM {$wpdb->posts} WHERE ID=%d",$pid));
             if(is_wp_error($r)) out('   [WRITE ERROR] contact: '.$r->get_error_message(),'#f66');
-            else out("   [ok] contact (page id $pid) — wrote ".mb_strlen($c)." chars, DB now holds ".mb_strlen((string)$svd),'#6f6'); } }
+            else { update_post_meta($pid,'_wcm_page_done',1); out("   [ok] contact (page id $pid) — wrote ".mb_strlen($c)." chars, DB now holds ".mb_strlen((string)$svd),'#6f6'); } } }
 
-    $legal=[]; if(DO_PRIVACY)$legal[]=['privacy-policy','Privacy Policy','Cover data collection, use, cookies, third parties, user rights (CCPA-aware), and contact.'];
-    if(DO_TERMS)$legal[]=['terms-and-conditions','Terms and Conditions','Cover use of the site, orders, pricing, IP, limitation of liability, governing law (USA).'];
-    if(DO_SHIPPING)$legal[]=['shipping-policy','Shipping Policy','Cover processing times, US domestic + international shipping, costs, tracking, delays.'];
-    if(DO_REFUND)$legal[]=['refund_returns','Refund and Returns Policy','Cover eligibility, timeframes, process, refunds, exchanges, non-returnable items.'];
-    if(DO_FAQ)$legal[]=['faq','FAQ','Answer 8-10 real buyer questions about the products, ordering, shipping, and returns, phrased as long-tail keywords (<h3> question + <p> answer).'];
-    if(DO_ABOUT)$legal[]=['about-us','About Us','Tell the store\'s story, what makes it trustworthy, and why to buy here — specific, not generic.'];
+    $legal=[]; if(DO_PRIVACY)$legal[]=['privacy-policy','Privacy Policy','Cover, in a standard trustworthy way, what data is collected, how it is used, cookies, third parties, user rights (CCPA-aware), and how to reach us.'];
+    if(DO_TERMS)$legal[]=['terms-and-conditions','Terms and Conditions','Cover use of the site, orders, pricing, intellectual property, limitation of liability and governing law (USA), as a standard fair company policy.'];
+    if(DO_SHIPPING)$legal[]=['shipping-policy','Shipping Policy','State clearly that we ship WORLDWIDE — anywhere in the world, both within the USA and internationally. Do NOT quote any exact shipping prices or dollar amounts; instead say the exact shipping cost is calculated automatically and shown at checkout before payment. Cover order processing/handling times, delivery estimates, worldwide coverage, order tracking, and possible customs delays, all in a reassuring positive tone.'];
+    if(DO_REFUND)$legal[]=['refund_returns','Refund and Returns Policy','Cover eligibility, timeframes, the return process, refunds, exchanges and any non-returnable items as a standard, fair, customer-friendly policy, and point buyers to contact support to start a return.'];
+    if(DO_FAQ)$legal[]=['faq','FAQ','Answer 8-10 real buyer questions (ordering, worldwide shipping, delivery times, returns, payment security, product quality, contacting support). Keep EVERY answer positive and confident and show off what the store can do: we ship to anywhere in the world, orders are handled quickly, the exact shipping cost is shown at checkout, support replies promptly by email and phone, and checkout is secure. Phrase questions as natural long-tail keywords (<h3> question + <p> answer). Never say the store cannot do something.'];
+    if(DO_ABOUT)$legal[]=['about-us','About Us','Tell the store\'s story, what makes it trustworthy, and why to buy here — specific and positive, not generic.'];
     foreach($legal as $L){ out("\n--- {$L[1]} ---",'#6cf'); write_page_via_ai($L[0],$L[1],page_prompt($L[1],$L[2])); }
 
-    if(DO_BLOG && BLOG_COUNT>0){ out("\n--- Blog (".BLOG_COUNT." posts) ---",'#6cf');
-        [$td]=ai_json("Suggest ".BLOG_COUNT." distinct, SEO-friendly blog article titles for ".brand()." selling ".STORE_NICHE.", aimed at buyers and search traffic. Return JSON: {\"titles\":[\"...\"]} — no comments, no trailing commas.");
-        $titles=is_array($td)&&!empty($td['titles'])?array_slice(array_values((array)$td['titles']),0,BLOG_COUNT):[];
-        foreach($titles as $ti){ $ti=trim((string)$ti); if($ti==='') continue;
-            if((int)$wpdb->get_var($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status<>'trash' AND post_title=%s LIMIT 1",$ti))){ out("   [skip] $ti (post already exists)",'#888'); continue; }   // don't duplicate on a re-run
-            [$d,$err]=ai_json("Write a 900-1200 word SEO blog article titled \"$ti\" for ".brand()." selling ".STORE_NICHE.", written to help buyers and rank in search. ".voice_rules().compliance_clause()."Valid HTML, one <h1>, then <h2>/<h3>. ".html_quote_rule()."Return JSON: {\"content\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}");
-            if(!$d||empty($d['content'])){ out("   [skip] $ti — ".($err?:'no content'),'#f66'); continue; }
-            $post=wp_insert_post(['post_type'=>'post','post_title'=>$ti,'post_status'=>PUBLISH_STATE,'post_content'=>append_disclaimer(dedash((string)$d['content']))]);
-            if($post){ if(!empty($d['meta_title'])) update_post_meta($post,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
-                if(!empty($d['meta_description'])) update_post_meta($post,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
-                if(!empty($d['focus_keyword'])) update_post_meta($post,'rank_math_focus_keyword',(string)$d['focus_keyword']);
-                out("   [ok] $ti",'#6f6'); } } }
+    // ---- BLOG: post #1 live now, the rest auto-scheduled every BLOG_CADENCE_DAYS ----
+    // Resume-safe: the title list + a fixed start date are saved ONCE, so each title keeps a
+    // stable schedule slot no matter how many refreshes it takes. Already-created titles are
+    // skipped (no duplicates). BLOG_PER_RUN caps writes per load so a 45-post job can't time out.
+    if(DO_BLOG && BLOG_COUNT>0){
+        // Flatsome blog layout — full-width posts (no category-widget sidebar shoving content). Verified theme-mod keys: blog_post_layout (single), blog_layout (archive).
+        if(is_flatsome() && BLOG_LAYOUT!==''){ if(get_theme_mod('blog_post_layout')!==BLOG_LAYOUT || get_theme_mod('blog_layout')!==BLOG_LAYOUT){ set_theme_mod('blog_post_layout',BLOG_LAYOUT); set_theme_mod('blog_layout',BLOG_LAYOUT); out("   [ok] blog layout -> ".BLOG_LAYOUT,'#6f6'); } }
+        // make sure posts actually list on the existing /blog page
+        $bpg=get_page_by_path('blog'); if($bpg && (int)get_option('page_for_posts')!==(int)$bpg->ID){ update_option('page_for_posts',(int)$bpg->ID); out("   [ok] /blog set as the posts page",'#6f6'); }
+        if(get_option('wcm_blog_done')) out("\n--- Blog --- (already done; RESET_PROGRESS to redo)",'#888');
+        else { out("\n--- Blog (".BLOG_COUNT." posts: #1 live, rest every ".max(1,(int)BLOG_CADENCE_DAYS)." day(s)) ---",'#6cf');
+            $titles=json_decode((string)get_option('wcm_blog_titles'),true);   // reuse the saved list across resumes so schedule slots stay put
+            if(!is_array($titles) || !$titles){
+                [$td]=ai_json("Suggest exactly ".BLOG_COUNT." distinct, SEO-friendly blog article titles for ".brand()." selling ".STORE_NICHE.", aimed at buyers and search traffic. No numbering. Return JSON: {\"titles\":[\"...\"]} — no comments, no trailing commas.");
+                $titles=(is_array($td)&&!empty($td['titles']))?array_values(array_unique(array_filter(array_map(fn($x)=>trim((string)$x),(array)$td['titles'])))):[];
+                $titles=array_slice($titles,0,BLOG_COUNT);
+                if($titles) update_option('wcm_blog_titles',wp_json_encode($titles),false); }
+            if(!$titles){ out('   [skip] blog — could not generate titles','#f66'); }
+            else {
+                $now=current_time('timestamp'); $base=(int)get_option('wcm_blog_start'); if($base<=0){ $base=$now; update_option('wcm_blog_start',$base,false); }   // fixed anchor date for the whole schedule
+                $cad=max(1,(int)BLOG_CADENCE_DAYS); $cap=BLOG_PER_RUN>0?(int)BLOG_PER_RUN:PHP_INT_MAX;
+                $cat_id=0; if(BLOG_CATEGORY!==''){ $bt=get_term_by('name',BLOG_CATEGORY,'category'); if($bt&&!is_wp_error($bt)) $cat_id=(int)$bt->term_id; else { $ins=wp_insert_term(BLOG_CATEGORY,'category'); if(!is_wp_error($ins)) $cat_id=(int)$ins['term_id']; } }
+                $made=0; $remaining=0; $fail=0;
+                $existing=array_flip($wpdb->get_col("SELECT post_title FROM {$wpdb->posts} WHERE post_type='post' AND post_status<>'trash'"));   // ONE query for all existing post titles -> O(1) dedup per title instead of a full-table title scan on every title
+                foreach($titles as $idx=>$ti){ $ti=trim((string)$ti); if($ti==='') continue;
+                    if(isset($existing[$ti])) continue;   // already created on a prior run — keeps its slot, don't touch
+                    if($made>=$cap){ $remaining++; continue; }   // per-run cap reached: tally what's left, write it next refresh
+                    @set_time_limit(0);
+                    [$d,$err]=ai_json(blog_article_prompt($ti,$idx));
+                    if(!$d||empty($d['content'])){ out("   [skip] $ti — ".($err?:'no content'),'#f66');
+                        if(strpos((string)$err,'CREDIT')!==false){ out('   [STOP] AI credit/billing exhausted — refresh after fixing billing to resume.','#f66'); $blog_incomplete=true; break; }
+                        if(++$fail>=3){ out('   [STOP] 3 blog calls failed in a row — refresh to resume from here.','#f66'); $blog_incomplete=true; break; } continue; }
+                    $fail=0;
+                    $html=demote_h1((string)$d['content']);              // theme already prints the title as the H1
+                    $html=dedash($html);
+                    [$html,$extk]=blog_filter_links($html);              // drop business/competitor links, keep at most one authoritative source
+                    $html=blog_topup_links($html,(int)BLOG_INTERNAL_LINKS);
+                    $html=append_disclaimer($html);
+                    $off=BLOG_FIRST_LIVE ? $idx*$cad : ($idx+1)*$cad; $when=$base+$off*86400; $due=($when<=$now);
+                    $status=$due?'publish':'future'; $dl=date('Y-m-d H:i:s',$when);
+                    $args=['post_type'=>'post','post_title'=>$ti,'post_status'=>$status,'post_content'=>$html,'post_date'=>$dl,'post_date_gmt'=>get_gmt_from_date($dl)];
+                    if($cat_id) $args['post_category']=[$cat_id];
+                    $post=wp_insert_post($args,true);
+                    if(is_wp_error($post)){ out("   [skip] $ti — ".$post->get_error_message(),'#f66'); continue; }
+                    if(!empty($d['meta_title'])) update_post_meta($post,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
+                    if(!empty($d['meta_description'])) update_post_meta($post,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
+                    if(!empty($d['focus_keyword'])) update_post_meta($post,'rank_math_focus_keyword',(string)$d['focus_keyword']);
+                    $made++; $existing[$ti]=1; $when_tag=$due?('live '.date('M j',$when)):('scheduled '.date('M j, Y',$when));
+                    out("   [ok] $ti — $when_tag".($extk?' + authoritative link':''),'#6f6'); }
+                if(!$blog_incomplete){
+                    if($remaining>0){ $blog_incomplete=true; out("   [batch] wrote $made now; $remaining post(s) left — refresh the URL to write the next batch.",'#6cf'); }
+                    else { update_option('wcm_blog_done',1,false); out("   [done] all ".count($titles)." blog posts created (".$made." this run).",'#6f6'); } } } }
+    }
 }
+
+// ---- PHASE: BRANDING (site title + colors + logo) --------------------------
+if(!$batched && DO_BRANDING){ if(get_option('wcm_branding_done')) out("\n--- Branding --- (already done; RESET_PROGRESS to redo)",'#888'); else { out("\n--- Branding (name, colors, logo) ---",'#6cf');
+    $ov=BRANDING_OVERWRITE;
+    // 1) Site title + tagline (core options)
+    $title=BRAND_NAME;   // the site title IS the brand name — nothing extra to set
+    if($title!=='' && ($ov || trim((string)get_option('blogname'))==='')){ update_option('blogname',$title); out("   [ok] site title -> $title",'#6f6'); }
+    if(SITE_TAGLINE!=='' && ($ov || trim((string)get_option('blogdescription'))==='')){ update_option('blogdescription',SITE_TAGLINE); out("   [ok] tagline set",'#6f6'); }
+    // 2) Color palette -> Flatsome theme mods (only where unset, unless overwrite)
+    $pal=brand_palette(); out("   palette: {$pal['primary']} / {$pal['secondary']} / {$pal['accent']}",'#6cf');
+    $setmod=function($key,$val) use($ov){ if($val==='') return false; if(!$ov && get_theme_mod($key)) return false; set_theme_mod($key,$val); return true; };
+    $cn=0; if($setmod('color_primary',$pal['primary'])) $cn++; if($setmod('color_secondary',$pal['secondary'])) $cn++;
+    if($setmod('color_success',$pal['accent'])) $cn++; if($setmod('color_links',$pal['primary'])) $cn++;
+    out("   [ok] set $cn Flatsome color option(s)",'#6f6');
+    // 3) Logo (icon + brand name) — only if none set, unless overwrite
+    $have_logo = get_theme_mod('site_logo') || get_theme_mod('custom_logo');
+    if($have_logo && !$ov){ out('   [skip] logo already set (BRANDING_OVERWRITE=false)','#888'); }
+    elseif(IDEOGRAM_API_KEY===''){ out('   [skip] logo — IDEOGRAM_API_KEY empty (name + colors still applied)','#fa0'); }
+    else { [$lu,$lp]=generate_logo($pal);
+        if(!$lu){ out("   [skip] logo — $lp",'#fa0'); }
+        else { $att=media_handle_sideload(['name'=>'logo.png','tmp_name'=>$lp],0,brand().' logo');
+            if(is_wp_error($att)){ @unlink($lp); out('   [skip] logo attach — '.$att->get_error_message(),'#fa0'); }
+            else { set_theme_mod('site_logo',$lu);                 // Flatsome: raw URL string used directly as <img src>
+                set_theme_mod('custom_logo',(int)$att);            // WordPress core custom-logo (attachment ID) as fallback
+                update_post_meta($att,'_wp_attachment_image_alt',brand().' logo');
+                out('   [ok] logo generated + set','#6f6'); } } }
+    update_option('wcm_branding_done',1,false); } }
 
 // best-effort cache purge so new content/prices/stock show without a manual cache clear (each is a no-op if not installed)
 if(function_exists('wp_cache_flush')) wp_cache_flush();          // object cache (Redis/Memcached)
@@ -708,7 +1103,8 @@ if(function_exists('wpfc_clear_all_cache')) wpfc_clear_all_cache();// WP Fastest
 out("\nCleared caches (object + common page-cache plugins).",'#6cf');
 
 out("\nDone. Products processed: $processed".($aborted?' — STOPPED EARLY (see red messages); re-open the URL to resume.':($batched?' (more to do — refresh to continue).':'.')),'#6cf');
-if($products_complete){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done'"); delete_option('wcm_reset_done'); }   // whole job done — clear resume flags + re-arm RESET_PROGRESS
-if(!$batched && $left===0 && SELF_DELETE_WHEN_DONE){ if(@unlink(__FILE__)) out('This file deleted itself. ✅','#6f6'); else out('Could not auto-delete — delete this file manually.','#fa0'); }
-else out('>>> Not fully done — re-open the URL to finish, then delete this file. <<<','#fa0');
+$job_done = (!$batched && $left===0 && !$blog_incomplete);   // everything finished: products done AND no blog batch still pending
+if($job_done && $products_complete){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done'"); delete_option('wcm_reset_done'); }   // clear product resume flags + re-arm RESET only when the WHOLE job is done. Clearing while the blog is still batching across refreshes would wipe the done-flags and reprocess the ENTIRE catalog on every refresh
+if($job_done && SELF_DELETE_WHEN_DONE){ if(@unlink(__FILE__)) out('This file deleted itself. ✅','#6f6'); else out('Could not auto-delete — delete this file manually.','#fa0'); }
+elseif(!$job_done) out('>>> Not fully done — re-open the URL to finish, then delete this file. <<<','#fa0');
 echo "</body>";
