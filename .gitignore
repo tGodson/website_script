@@ -1,0 +1,3 @@
+# never commit secrets / service-account keys
+*.json
+my-project-4235-1689745249038-c867f4f00c2d.json

@@ -41,7 +41,7 @@ const REQUIRE_SECRET = true;                 // live = keep true
 const SECRET = '1234';   // ?key=THIS  (no # & % symbols)
 
 // ---- AI provider -----------------------------------------------------------
-const AI_PROVIDER = 'claude';                // 'gemini' (free) | 'claude' | 'openai' (ChatGPT)
+const AI_PROVIDER = 'openai';                // 'gemini' (free) | 'claude' | 'openai' (ChatGPT)
 const GEMINI_API_KEY = '';                   // https://aistudio.google.com/apikey
 const GEMINI_MODEL   = 'gemini-2.0-flash';
 const GEMINI_RPM     = 10;
@@ -84,6 +84,7 @@ const SITE_DOMAIN = '';             // your REAL domain, e.g. 'https://mysite.co
 // ---- IMAGES (Ideogram) -----------------------------------------------------
 const DO_IMAGE            = false;
 const SKIP_IF_HAS_IMAGE   = true;
+const USE_LOGO_AS_PRODUCT_IMAGE = true;   // NO API needed: set the logo as the featured image for products that have NO image. Leave ON as the everyday default; turn OFF when you want DO_IMAGE to generate real images instead (with RESET_PROGRESS, generation replaces logo placeholders)
 const IDEOGRAM_API_KEY      = '';
 const IDEOGRAM_ASPECT       = 'ASPECT_1_1';   // 1:1 square. Kept in ASPECT_x_y form; auto-converted to v3's '1x1'
 const IDEOGRAM_RENDER_SPEED = 'QUALITY';      // Ideogram 3.0 render tier — higher = SHARPER label text. 'QUALITY' (sharpest, ~$0.09/img) | 'DEFAULT' (~$0.06) | 'TURBO' (~$0.03) | 'FLASH' (fastest/cheapest). Set lower to cut spend
@@ -100,7 +101,7 @@ const IMAGE_NEGATIVE = 'person, people, human, man, woman, child, hand, hands, f
                      . 'small text, fine print, tiny letters, secondary text, subtitle, tagline, slogan, ingredient list, nutrition facts, '
                      . 'barcode, QR code, directions text, disclaimer text, busy cluttered label, paragraph of text, watermark, extra limbs, deformed';   // v3 negative_prompt — excludes humans, garbled + small filler text
 // GUARANTEED-correct label text: generate a BLANK-label product photo, then burn the real product name on as a crisp caption bar.
-const IMAGE_TEXT_OVERLAY = true;   // true = generate a BLANK white front label, then WE print the 3-tier label (product name / use / brand) onto it — the ONLY text on the pack, perfect spelling every time. false = let the model draw the label text
+const IMAGE_TEXT_OVERLAY = false;   // true = generate a BLANK white front label, then WE print the 3-tier label (product name / use / brand) onto it — the ONLY text on the pack, perfect spelling every time. false = let the model draw the label text
 const IMAGE_LABEL_USE_FALLBACK = true;   // if no AI 'use' phrase exists, use the product's category as the middle line (e.g. 'Pain Relief')
 const OVERLAY_FONT       = '';     // optional .ttf next to this file (e.g. 'font.ttf') or absolute path for the caption; '' = Imagick built-in / auto-detected system font
 const IMAGE_STYLE_BLANK  = 'clean professional studio product photograph of a single product, FRONT-FACING and centered on a '
@@ -142,13 +143,17 @@ const BLOG_EXTERNAL_LINK  = true;    // add ONE outbound link to an authoritativ
 const BLOG_WORDS          = '900-1300';   // article length target
 const BLOG_CATEGORY       = '';      // optional blog category name to file every post under ('' = none)
 const BLOG_LAYOUT         = 'no-sidebar';   // Flatsome blog layout (verified theme keys). 'no-sidebar' = clean full-width posts (recommended, stops the category-widget sidebar pushing content) | 'right-sidebar' | 'left-sidebar' | '' = leave your current setting untouched
+const REPAIR_POST_LINKS   = false;   // MAINTENANCE MODE: re-scan every existing post and remove any internal link that points to a NOT-YET-PUBLISHED post (the 404 case), then re-top-up. No AI, no new posts. Turn every DO_*/FORCE_*/REMOVE_* off to run this alone. Set back to false after.
 const OVERWRITE_PAGES = true;                 // legal/info pages: overwrite if they already have content
 
 // ---- BRANDING (site identity: name, colors, logo — the "Appearance > Customize" bits) ----------------
+const ENSURE_SEARCH_VISIBLE = true;   // force "Search engine visibility" ON (blog_public=1) every run. Restored/migrated/staging sites often silently carry the "Discourage search engines" flag, which noindexes the WHOLE site so nothing indexes no matter how many sitemaps you submit. Leave ON.
 const DO_BRANDING       = true;   // set the site title, an AI-chosen color palette, and a generated logo (icon + brand name)
 const BRANDING_OVERWRITE= true;   // false = set each item ONLY where the site hasn't been branded yet (safe). true = force name/colors/logo every run
 const SITE_TAGLINE      = '';      // '' = keep the current tagline  (the site TITLE is always BRAND_NAME — no separate setting)
 const LOGO_BG           = '#ffffff';   // logo canvas background. White blends with Flatsome's near-white header. Use a dark hex ONLY if your header is dark
+const LOGO_URL          = '';      // OPTIONAL: paste a PUBLIC/live logo image URL (png/jpg) to USE that as the logo (downloaded into the media library once). Overrides generation. Also used by USE_LOGO_AS_PRODUCT_IMAGE
+const GENERATE_LOGO     = true;    // when LOGO_URL is empty: true = build a logo with the TEXT AI (writes an SVG icon) + a code-drawn wordmark, with a monogram-badge fallback — NO image API needed; false = don't create a logo at all
 
 // ---- Compliance + anti-AI voice --------------------------------------------
 const COMPLIANCE_MODE = true;
@@ -176,7 +181,7 @@ const REPLACE_PRODUCT_CATEGORIES = false;      // ONLY used by DO_CATEGORIES gro
                                                // categories and replace them (destructive — this is what wiped categories).
 const APPEND_MARKER = '<span class="wcm-added"></span>';  // guards "append" so it only happens once. A <span> survives WordPress kses; an HTML comment gets stripped when saving unauthenticated
 const APPEND_SIG    = 'wcm-added';             // stable substring to detect the marker (matches the new span AND the old comment — backward-compatible)
-const ENABLE_LAWFUL_USE_GUARD = false;
+const ENABLE_LAWFUL_USE_GUARD = false;   // toggle the lawful-use catalog guard on/off (false = off; useful when a legitimate catalog trips a false positive)
 
 // #############################################################################
 // #                       END OF CONFIG — CODE BELOW                          #
@@ -218,7 +223,7 @@ function brand(){ return BRAND_NAME !== '' ? BRAND_NAME : get_bloginfo('name'); 
 function tagline(){ return TAGLINE !== '' ? TAGLINE : get_bloginfo('description'); }
 function currency(){ return function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD'; }
 function shop_url(){ $u = function_exists('wc_get_page_permalink') ? wc_get_page_permalink('shop') : ''; return $u ?: home_url('/'); }
-function site_email(){ return CONTACT_EMAIL!=='' ? CONTACT_EMAIL : 'sales@'.preg_replace('/^www\./','',strtolower((string)parse_url(home_url(),PHP_URL_HOST))); }   // always sales@<domain> unless overridden
+function site_email(){ return CONTACT_EMAIL!=='' ? CONTACT_EMAIL : 'sales@'.site_host(); }   // sales@<domain>; site_host() honors SITE_DOMAIN so the email matches the site's real domain / its links, not a staging host
 function us_phone(){ if(CONTACT_PHONE!=='') return CONTACT_PHONE;   // placeholder only: 555-01xx is the reserved fictional range (never a real line) — replace it later
     static $ph=null; if($ph!==null) return $ph;                       // ONE number for the whole run...
     $ph=(string)get_option('wcm_phone'); if($ph!=='') return $ph;     // ...and persisted, so every page (contact, FAQ, shipping...) shows the SAME phone
@@ -355,6 +360,9 @@ function field_need($cur,$mode){ $cur=(string)$cur;
     if($mode==='fill') return trim($cur)==='';           // only when empty
     return trim($cur)==='' || strpos($cur,APPEND_SIG)===false; }   // append: empty, or not yet appended
 /** apply text per mode. Returns [value, changed]. Mirrors field_need exactly. */
+function round_price($v){ $v=(float)preg_replace('/[^0-9.]/','',(string)$v); if($v<=0) return '';   // return '' for missing/invalid so callers skip (both test $pr!=='')
+    if(PRICE_ENDING==='') return (string)(int)round($v);                              // whole number (e.g. 24.40 -> "24")
+    return number_format(floor($v)+(float)PRICE_ENDING,2,'.',''); }                   // charm price: keep the dollar part, force the configured ending (e.g. 24.40 -> "24.99")
 function apply_text($cur,$new,$mode){ $cur=(string)$cur; $new=(string)$new; if($new==='') return [$cur,false];
     if(trim($cur)===''){ return [$mode==='append' ? $new."\n".APPEND_MARKER : $new, true]; }   // empty -> fill it; in append mode plant the marker NOW so a later reprocess doesn't append a 2nd copy
     if($mode==='fill') return [$cur,false];              // has content + fill-only -> leave it untouched
@@ -499,17 +507,51 @@ function brand_palette(){ static $p=null; if($p!==null) return $p; $p=palette_fa
 function hex_rgb($h){ $h=ltrim((string)$h,'#'); if(strlen($h)===3) $h=$h[0].$h[0].$h[1].$h[1].$h[2].$h[2];
     return [hexdec(substr($h,0,2)),hexdec(substr($h,2,2)),hexdec(substr($h,4,2))]; }
 function is_dark_hex($h){ [$r,$g,$b]=hex_rgb($h); return (0.299*$r+0.587*$g+0.114*$b)<140; }   // perceived luminance
-// Build the wordmark logo: AI icon on the left, brand name (+ tagline) as REAL text on the right. Returns [url,path] or [null,err].
-function generate_logo($palette){
-    $neg='text, letters, words, typography, watermark, signature, frame, border, photo, realistic photograph, person, hands';
-    $prompt="A clean, modern, minimal FLAT VECTOR emblem icon symbolizing ".STORE_NICHE." for the brand ".brand().". "
-        ."Simple geometric mark, bold and memorable, using the colors ".$palette['primary']." and ".$palette['secondary'].
-        " on a plain solid white background. Centered, lots of padding, NO text, NO letters, NO words of any kind.";
-    [$u,$e]=ideogram_url($prompt,$neg,'ASPECT_1_1'); if(!$u) return [null,$e?:'no icon'];
-    $tmp=download_url($u,120); if(is_wp_error($tmp)) return [null,$tmp->get_error_message()];
+// brand initials for the monogram badge: 'Acme Health' -> 'AH', 'Nootropics' -> 'NO'
+function brand_initials(){ $parts=array_values(array_filter(preg_split('/\s+/',trim(brand()))));
+    if(!$parts) return 'A'; if(count($parts)>=2) return strtoupper(mb_substr($parts[0],0,1).mb_substr($parts[count($parts)-1],0,1));
+    return strtoupper(mb_substr($parts[0],0,2)); }
+function logo_tmp_png(){ return get_temp_dir().'wcm-icon-'.substr(md5(brand().microtime()),0,10).'.png'; }
+// strip anything unsafe/unsupported from AI-written SVG before we rasterize it locally (we never store or serve the raw SVG)
+function sanitize_svg($svg){ $svg=(string)$svg;
+    $svg=preg_replace('#<script\b.*?</script>#is','',$svg);
+    $svg=preg_replace('#<foreignObject\b.*?</foreignObject>#is','',$svg);
+    $svg=preg_replace('/\son\w+\s*=\s*("[^"]*"|\'[^\']*\')/i','',$svg);             // inline event handlers
+    $svg=preg_replace('/(?:xlink:href|href)\s*=\s*("[^"]*"|\'[^\']*\')/i','',$svg); // external references (no SSRF)
+    return preg_match('#<svg\b.*</svg>#is',$svg,$m) ? $m[0] : ''; }
+// rasterize an SVG string to a transparent PNG (Imagick only). '' if this host has no SVG support.
+function rasterize_svg($svg){ if($svg===''||!class_exists('Imagick')) return '';
+    try{ $im=new Imagick(); $im->setBackgroundColor(new ImagickPixel('transparent'));
+        $im->readImageBlob("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n".$svg);
+        $im->setImageFormat('png'); $im->resizeImage(400,400,Imagick::FILTER_LANCZOS,1,true);
+        $tmp=logo_tmp_png(); $im->writeImage($tmp); $im->clear(); return @file_exists($tmp)?$tmp:''; }
+    catch(\Throwable $e){ return ''; } }
+// draw a clean monogram badge (brand initials in a colored rounded square) — pure code, no API, always works
+function monogram_icon($palette){ $sz=400; $font=overlay_font(); $ini=brand_initials();
+    $pc=hex_ok($palette['primary'])?$palette['primary']:'#446084'; [$pr,$pg,$pb]=hex_rgb($pc);
+    if(class_exists('Imagick')){ try{ $c=new Imagick(); $c->newImage($sz,$sz,new ImagickPixel('transparent')); $c->setImageFormat('png');
+        $bg=new ImagickDraw(); $bg->setFillColor(new ImagickPixel($pc)); $bg->roundRectangle(0,0,$sz-1,$sz-1,72,72); $c->drawImage($bg);
+        $t=new ImagickDraw(); if($font) $t->setFont($font); $t->setFillColor(new ImagickPixel('#ffffff')); $t->setTextAlignment(Imagick::ALIGN_CENTER); $t->setFontSize($sz*0.42);
+        $c->annotateImage($t,$sz/2,$sz*0.60,0,$ini); $tmp=logo_tmp_png(); $c->writeImage($tmp); $c->clear(); return @file_exists($tmp)?$tmp:''; }catch(\Throwable $e){} }
+    $im=imagecreatetruecolor($sz,$sz); imagesavealpha($im,true); imagealphablending($im,false);
+    imagefill($im,0,0,imagecolorallocatealpha($im,0,0,0,127)); imagealphablending($im,true);
+    imagefilledrectangle($im,0,0,$sz,$sz,imagecolorallocate($im,$pr,$pg,$pb)); $white=imagecolorallocate($im,255,255,255);
+    if($font && function_exists('imagettftext')){ $fs=$sz*0.40; $bb=imagettfbbox($fs,0,$font,$ini); imagettftext($im,$fs,0,(int)(($sz-($bb[2]-$bb[0]))/2),(int)(($sz+($bb[1]-$bb[7]))/2),$white,$font,$ini); }
+    else { $gf=5; imagestring($im,$gf,(int)(($sz-imagefontwidth($gf)*strlen($ini))/2),(int)($sz/2-imagefontheight($gf)/2),$ini,$white); }
+    $tmp=logo_tmp_png(); imagepng($im,$tmp); imagedestroy($im); return @file_exists($tmp)?$tmp:''; }
+// Build the wordmark logo with the EXISTING text AI (no image API): the AI writes a flat SVG icon, we rasterize it and
+// composite the brand name (+tagline) as real text. If SVG can't be rasterized here, we draw a monogram badge instead.
+function generate_logo($palette){ $icon='';
+    [$d]=ai_json("Design a simple, modern, FLAT VECTOR icon that symbolizes ".STORE_NICHE." for the brand ".brand().". "
+        ."No text, no letters, no words inside the icon. Use only these hex colors: ".$palette['primary'].", ".$palette['secondary'].", ".$palette['accent']." and white. "
+        ."Return ONE JSON object: {\"svg\":\"<svg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'>...</svg>\"} — a COMPLETE standalone SVG: a viewBox, clean geometric shapes, centered with padding, NO <script>, NO <text>, NO external images.");
+    $svg=is_array($d)?trim((string)($d['svg']??'')):'';
+    if($svg!=='') $icon=rasterize_svg(sanitize_svg($svg));   // AI icon when the host can rasterize SVG...
+    if($icon==='') $icon=monogram_icon($palette);            // ...otherwise a guaranteed code-drawn monogram badge
+    if($icon==='') return [null,'could not build a logo icon'];
     $out=wp_upload_dir(); $dir=trailingslashit($out['path']); $file=$dir.'wcm-logo-'.substr(md5(brand().microtime()),0,8).'.png';
-    $ok=compose_logo($tmp,$file,brand(),tagline(),$palette); @unlink($tmp);
-    if(!$ok) return [null,'logo compose failed'];
+    $ok=compose_logo($icon,$file,brand(),tagline(),$palette); @unlink($icon);
+    if(!$ok) return [null,'logo compose failed (no usable system font for the wordmark)'];
     return [trailingslashit($out['url']).basename($file),$file]; }
 // composite icon + name (+tagline) onto a LOGO_BG canvas. Imagick preferred, GD fallback.
 function compose_logo($iconPath,$outPath,$name,$tagline,$palette){ $font=overlay_font();
@@ -544,6 +586,20 @@ function compose_logo($iconPath,$outPath,$name,$tagline,$palette){ $font=overlay
         for(;$ss>=11;$ss-=1){ $bb3=imagettfbbox($ss,0,$font,$tagline); if(($bb3[2]-$bb3[0])<=$tw) break; }
         imagettftext($canvas,$ss,0,$tx,(int)($H/2+$size*0.6),$scc,$font,$tagline); }
     imagepng($canvas,$outPath); imagedestroy($canvas); imagedestroy($icon); imagedestroy($sc); return true; }
+// download a logo image URL into the media library once; return attachment id (0 on failure)
+function sideload_logo($url){ $url=trim((string)$url); if($url==='') return 0;
+    $tmp=download_url($url,120); if(is_wp_error($tmp)) return 0;
+    $ext=strtolower(pathinfo((string)parse_url($url,PHP_URL_PATH),PATHINFO_EXTENSION)); if(!in_array($ext,['png','jpg','jpeg','webp','gif'],true)) $ext='png';
+    $att=media_handle_sideload(['name'=>'wcm-logo.'.$ext,'tmp_name'=>$tmp],0,brand().' logo');
+    if(is_wp_error($att)){ @unlink($tmp); return 0; }
+    update_post_meta($att,'_wp_attachment_image_alt',brand().' logo'); return (int)$att; }
+// resolve ONE reusable logo attachment id (cached in wcm_logo_att): provided LOGO_URL > existing custom_logo > existing site_logo. 0 if none available.
+function resolve_logo_attachment(){ static $id=null; if($id!==null) return $id;
+    $cached=(int)get_option('wcm_logo_att'); if($cached && get_post($cached)) return $id=$cached;
+    if(LOGO_URL!==''){ $a=sideload_logo(LOGO_URL); if($a){ update_option('wcm_logo_att',$a,false); return $id=$a; } }
+    $cl=(int)get_theme_mod('custom_logo'); if($cl && get_post($cl)){ update_option('wcm_logo_att',$cl,false); return $id=$cl; }   // custom_logo is already an attachment id
+    $sl=get_theme_mod('site_logo'); if(is_string($sl)&&$sl!==''){ $a=sideload_logo($sl); if($a){ update_option('wcm_logo_att',$a,false); return $id=$a; } }
+    return $id=0; }
 function form_hint($h){ foreach([
     // food / snacks / drinks
     'chip'=>'a printed stand-up snack pouch','crisp'=>'a printed stand-up snack pouch','snack'=>'a printed stand-up snack pouch','plantain'=>'a printed stand-up snack pouch',
@@ -576,41 +632,79 @@ function inject_links($html,$related,$cat_url,$cat_name){ $related=array_values(
 // business/competitor URL ever survives. Then top up internal links to target.
 // ---------------------------------------------------------------------------
 function blog_authoritative_host($host){ $h=preg_replace('/^www\./','',strtolower((string)$host)); if($h==='') return false;
-    if(preg_match('/(^|\.)(gov|mil|edu|int)(\.[a-z]{2})?$/',$h)) return true;   // .gov .mil .edu .int and .gov.uk / .edu.au style
-    $ok=['who.int','un.org','europa.eu','ec.europa.eu','efsa.europa.eu','ema.europa.eu','nih.gov','ncbi.nlm.nih.gov',
+    if(preg_match('/(^|\.)(gov|mil|edu|int)$/',$h)) return true;   // .gov .mil .edu .int as the ACTUAL TLD only — strict, so a registrable lookalike like "shop.gov.io" is NOT treated as authoritative
+    $ok=['gov.uk','gov.au','gov.ca','gov.in','gov.za','gov.sg','gov.br','gov.nz','gov.ie','ac.uk','edu.au','nhs.uk',   // legit foreign government / public-academic second-level domains (suffix-matched, closes the .gov.<cc> loophole)
+         'who.int','un.org','europa.eu','ec.europa.eu','efsa.europa.eu','ema.europa.eu','nih.gov','ncbi.nlm.nih.gov',
          'fda.gov','cdc.gov','ftc.gov','usda.gov','epa.gov','osha.gov','nist.gov','cpsc.gov','sec.gov','irs.gov','loc.gov',
          'law.cornell.edu','wikipedia.org'];   // curated non-commercial public/reference sources
     foreach($ok as $d){ if($h===$d || substr($h,-(strlen($d)+1))==='.'.$d) return true; } return false; }
 function blog_is_internal_href($u){ $u=trim((string)$u); if($u===''||$u[0]==='#') return false; if($u[0]==='/') return true;
     $host=parse_url($u,PHP_URL_HOST); return $host && preg_replace('/^www\./','',strtolower($host))===site_host(); }
 function blog_count_internal($html){ $n=0; foreach(existing_hrefs($html) as $u){ if(blog_is_internal_href($u)) $n++; } return $n; }
-function blog_filter_links($html){ if(strpos((string)$html,'<a')===false) return [(string)$html,false]; $extKept=false;
-    $out=preg_replace_callback('/<a\b[^>]*\bhref=["\']([^"\']*)["\'][^>]*>(.*?)<\/a>/is', function($m) use(&$extKept){
-        $url=trim($m[1]); if(!is_foreign_url($url)) return $m[0];                       // our own site / relative / mailto / tel / anchor -> keep
+function blog_href_key($u){ $u=trim((string)$u); $pp=parse_url($u); $path=isset($pp['path'])?$pp['path']:$u; $k=rtrim(strtolower((string)$path),'/'); return $k===''?'/':$k; }
+// Always-live, non-blog link targets (shop, categories, products, contact, homepage). Memoized — these never depend on the schedule.
+function blog_static_pool(){ static $p=null; if($p!==null) return $p; $raw=[];
+    $raw[]=['url'=>shop_url(),'name'=>'our full catalog']; $raw[]=['url'=>home_url('/'),'name'=>brand()];
+    foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false,'number'=>20]) as $t){ if(is_wp_error($t)||strtolower($t->slug)==='uncategorized') continue; $u=get_term_link($t); if(!is_wp_error($u)) $raw[]=['url'=>$u,'name'=>$t->name]; }
+    foreach(get_posts(['post_type'=>'product','post_status'=>'publish','numberposts'=>30,'orderby'=>'ID','order'=>'ASC']) as $po){ $raw[]=['url'=>get_permalink($po),'name'=>get_the_title($po)]; }   // full objects prime the post cache -> get_permalink/get_the_title are cache hits
+    $cp=get_page_by_path('contact-us'); if($cp) $raw[]=['url'=>get_permalink($cp->ID),'name'=>'contact us'];
+    $seen=[]; $p=[]; foreach($raw as $r){ $u=site_link($r['url']); if(!$u||is_wp_error($u)||isset($seen[$u])) continue; $seen[$u]=1; $p[]=['url'=>$u,'name'=>$r['name']]; } return $p; }
+// Every known blog post (publish + future) with its LOCAL publish date string. Seeds once from the DB, then accumulates posts we create this run (call with $add) so later posts can link back to earlier ones in the SAME batch.
+function blog_known_posts($add=null){ static $l=null;
+    if($l===null){ $l=[]; foreach(get_posts(['post_type'=>'post','post_status'=>array('publish','future'),'numberposts'=>-1,'orderby'=>'date','order'=>'ASC']) as $po){ $u=site_link(get_permalink($po)); if($u&&!is_wp_error($u)) $l[]=['url'=>$u,'name'=>get_the_title($po),'date'=>(string)$po->post_date]; } }
+    if(is_array($add)) $l[]=$add; return $l; }
+// Links a post publishing at $cut may use: the always-live pool PLUS any blog post that goes live at or before $cut (so the link is valid the moment THIS post appears). $cut = the authoring post's local 'Y-m-d H:i:s'.
+function blog_linkable($cut){ $pool=blog_static_pool(); foreach(blog_known_posts() as $b){ if(strcmp((string)$b['date'],(string)$cut)<=0) $pool[]=['url'=>$b['url'],'name'=>$b['name']]; } return $pool; }
+function blog_internal_ok($url,$cut){ $full=(isset($url[0])&&$url[0]==='/')?home_url($url):$url; $pid=url_to_postid($full); if($pid<=0) return false;   // fallback for links not already in the offered set
+    $st=get_post_status($pid); if($st==='publish') return true;                                                    // already live -> never 404s
+    if($st==='future') return strcmp((string)get_post_field('post_date',$pid),(string)$cut)<=0;                    // scheduled -> ok only if it publishes at/before this post goes live
+    return false; }
+function blog_link_allow($cut){ static $c=[]; $key=$cut.'|'.count(blog_known_posts()); if(isset($c[$key])) return $c[$key];   // memoize per (cutoff, #known posts): same $dl is reused across menu/filter/topup for one post; the count in the key prevents a STALE allowlist being reused after the known-post set grew (e.g. a page cached at now, then blog posts get created at the same second)
+    $allow=[]; foreach(blog_linkable($cut) as $r){ $allow[blog_href_key($r['url'])]=1; }   // every live page + every post scheduled at/before $cut
+    $bp=get_page_by_path('blog'); if($bp) $allow[blog_href_key(get_permalink($bp->ID))]=1;   // the /blog listing is always live
+    return $c[$key]=$allow; }
+// Page/category guard: unwrap only INTERNAL links that aren't live by $cut (external + mailto/tel/anchor left untouched — pages handle external via strip_foreign_links). Use $cut='now' since pages publish immediately.
+function strip_future_internal_links($html,$cut){ if(strpos((string)$html,'<a')===false) return (string)$html; $allow=blog_link_allow($cut);
+    return preg_replace_callback('/<a\b[^>]*\bhref=["\']([^"\']*)["\'][^>]*>(.*?)<\/a>/is', function($m) use($allow,$cut){
+        $url=trim($m[1]); if(is_foreign_url($url)) return $m[0]; $lo=strtolower($url);
+        if($url===''||$url[0]==='#'||strncmp($lo,'mailto:',7)===0||strncmp($lo,'tel:',4)===0) return $m[0];
+        if(isset($allow[blog_href_key($url)])) return $m[0];
+        return blog_internal_ok($url,$cut) ? $m[0] : $m[2]; },(string)$html); }
+function blog_filter_links($html,$cut){ if(strpos((string)$html,'<a')===false) return [(string)$html,false]; $extKept=false;
+    $allow=blog_link_allow($cut);
+    $out=preg_replace_callback('/<a\b[^>]*\bhref=["\']([^"\']*)["\'][^>]*>(.*?)<\/a>/is', function($m) use(&$extKept,$allow,$cut){
+        $url=trim($m[1]);
+        if(!is_foreign_url($url)){                                                        // internal / relative / mailto / tel / anchor
+            $lo=strtolower($url);
+            if($url===''||$url[0]==='#'||strncmp($lo,'mailto:',7)===0||strncmp($lo,'tel:',4)===0) return $m[0];   // anchors + mailto/tel are always safe -> keep
+            if(isset($allow[blog_href_key($url)])) return $m[0];                          // a page/post we offered (live now or scheduled at/before this post) -> keep
+            return blog_internal_ok($url,$cut) ? $m[0] : $m[2];                           // fallback resolve + date-check; unwrap future/scheduled-later/hallucinated (they 404 when this post goes live)
+        }
         if(BLOG_EXTERNAL_LINK && !$extKept && blog_authoritative_host((string)parse_url($url,PHP_URL_HOST))){ $extKept=true; return $m[0]; }
         return $m[2];                                                                    // any other external (incl. business/competitor) -> unwrap, keep the text
     },(string)$html); return [$out,$extKept]; }
-function blog_internal_pool(){ static $p=null; if($p!==null) return $p; $raw=[];
-    $raw[]=['url'=>shop_url(),'name'=>'our full catalog'];
-    foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false,'number'=>20]) as $t){ if(is_wp_error($t)||strtolower($t->slug)==='uncategorized') continue; $u=get_term_link($t); if(!is_wp_error($u)) $raw[]=['url'=>$u,'name'=>$t->name]; }
-    foreach(get_posts(['post_type'=>'product','post_status'=>'publish','numberposts'=>30,'orderby'=>'ID','order'=>'ASC']) as $po){ $raw[]=['url'=>get_permalink($po),'name'=>get_the_title($po)]; }   // full objects: get_posts primes the post cache, so get_permalink/get_the_title are hits, not per-id queries
-    $cp=get_page_by_path('contact-us'); if($cp) $raw[]=['url'=>get_permalink($cp->ID),'name'=>'contact us'];
-    foreach(get_posts(['post_type'=>'post','post_status'=>'publish','numberposts'=>30,'orderby'=>'ID','order'=>'DESC']) as $bo){ $raw[]=['url'=>get_permalink($bo),'name'=>get_the_title($bo)]; }   // PUBLISH only — never offer a scheduled/future post as an internal link (its URL 404s until it goes live). Full objects = cache hits
-    $seen=[]; $p=[]; foreach($raw as $r){ $u=site_link($r['url']); if(!$u||is_wp_error($u)||isset($seen[$u])) continue; $seen[$u]=1; $p[]=['url'=>$u,'name'=>$r['name']]; } return $p; }
-function blog_link_menu($idx){ $pool=blog_internal_pool(); $n=count($pool); if($n===0) return []; $k=min(6,$n); $seen=[]; $out=[];
-    for($i=0;$i<$k && count($out)<$k;$i++){ $x=$pool[($idx*3+$i)%$n]; if(isset($seen[$x['url']])) continue; $seen[$x['url']]=1; $out[]=$x; } return $out; }   // rotate the menu by post index so different posts link different pages
-function blog_topup_links($html,$target){ $target=(int)$target; if($target<=0) return $html; $cur=blog_count_internal($html); if($cur>=$target) return $html;
+function blog_link_menu($idx,$cut){ if((int)BLOG_INTERNAL_LINKS<=0) return [];   // 0 = user wants no internal links; don't suggest any
+    $posts=[]; foreach(blog_known_posts() as $b){ if(strcmp((string)$b['date'],(string)$cut)<=0) $posts[]=['url'=>$b['url'],'name'=>$b['name'],'date'=>$b['date']]; }   // sibling posts already live by $cut
+    usort($posts,fn($a,$b)=>strcmp((string)$a['date'],(string)$b['date']));         // force chronological order (a manual delete+recreate could seed the list out of order) so "newest first" below is always correct
+    $static=blog_static_pool(); $np=count($posts); $ns=count($static); $k=min((int)BLOG_INTERNAL_LINKS+1,$np+$ns); if($k<=0) return [];   // menu size tracks BLOG_INTERNAL_LINKS (was hardcoded 6, which over-fed the AI)
+    $out=[]; $seen=[]; $wantPosts=min($np,(int)ceil($k/2));                          // reserve about half (rounded up) of the menu for sibling posts, which used to sit at the tail of the pool and were almost never offered
+    for($i=$np-1;$i>=0 && count($out)<$wantPosts;$i--){ if(isset($seen[$posts[$i]['url']])) continue; $seen[$posts[$i]['url']]=1; $out[]=$posts[$i]; }   // newest sibling posts first (most topically relevant backward links)
+    for($i=0;$i<$ns && count($out)<$k;$i++){ $x=$static[($idx*3+$i)%$ns]; if(isset($seen[$x['url']])) continue; $seen[$x['url']]=1; $out[]=$x; }   // fill with shop/categories/products, rotated by post index so posts vary
+    for($i=$np-1;$i>=0 && count($out)<$k;$i--){ if(isset($seen[$posts[$i]['url']])) continue; $seen[$posts[$i]['url']]=1; $out[]=$posts[$i]; }   // backfill leftover slots from remaining siblings (e.g. a very small static pool) so the menu is never short when material exists
+    return $out; }
+function blog_topup_links($html,$target,$cut){ $target=(int)$target; if($target<=0) return $html; $cur=blog_count_internal($html); if($cur>=$target) return $html;
     $have=[]; foreach(existing_hrefs($html) as $u){ $have[rtrim((string)$u,'/')]=1; } $need=$target-$cur; $li='';
-    foreach(blog_internal_pool() as $r){ if($need<=0) break; $ru=rtrim((string)$r['url'],'/'); if(isset($have[$ru])) continue; $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; $have[$ru]=1; $need--; }
+    $sib=[]; foreach(blog_known_posts() as $b){ if(strcmp((string)$b['date'],(string)$cut)<=0) $sib[]=['url'=>$b['url'],'name'=>$b['name']]; } $sib=array_reverse($sib);   // sibling posts (newest first) BEFORE products/categories, so the deterministic top-up grows post-to-post linking too, not only product links
+    foreach(array_merge($sib,blog_static_pool()) as $r){ if($need<=0) break; $ru=rtrim((string)$r['url'],'/'); if(isset($have[$ru])) continue; $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; $have[$ru]=1; $need--; }
     return $li==='' ? $html : $html."\n<h2>Explore more</h2>\n<ul>$li</ul>"; }
-function blog_article_prompt($ti,$idx){ $links=''; foreach(blog_link_menu($idx) as $m){ $links.='  - '.$m['name'].': '.$m['url']."\n"; }
+function blog_article_prompt($ti,$idx,$cut){ $links=''; foreach(blog_link_menu($idx,$cut) as $m){ $links.='  - '.$m['name'].': '.$m['url']."\n"; }
     $ext = BLOG_EXTERNAL_LINK
-        ? "OUTBOUND LINK: include EXACTLY ONE link to an authoritative, non-commercial source that fits the topic — a government (.gov), military (.mil), educational (.edu) or intergovernmental (.int) site, or a well-known public health/legal/reference source (e.g. fda.gov, cdc.gov, nih.gov, ftc.gov, who.int, or the relevant national regulator). Use only a real, correct URL you are confident exists. NEVER link to a store, shop, brand, marketplace, competitor or any business. If nothing fits, add no outbound link.\n"
+        ? "OUTBOUND LINK: include EXACTLY ONE outbound link, and add one to almost every article where it fits. Use ONLY an authoritative, non-commercial source: a .gov, .mil, .edu or .int page (prefer nih.gov, pubmed.ncbi.nlm.nih.gov, fda.gov, cdc.gov, clinicaltrials.gov, medlineplus.gov, who.int), or a well-known public-reference page (en.wikipedia.org). NEVER link to a store, brand, blog, marketplace, competitor or any commercial business — commercial links are automatically stripped out and would simply vanish. Only omit the outbound link if genuinely nothing relevant exists.\n"
         : "Do not add any outbound external links.\n";
     return "Write a ".BLOG_WORDS." word SEO blog article titled \"$ti\" for ".brand().", which sells ".STORE_NICHE.". Write for real buyers and to rank in Google. "
         .voice_rules().compliance_clause()
         ."STRUCTURE: valid HTML only — ONE <h1> (the title), then <h2>/<h3> sections, short scannable paragraphs, at least one <ul> list, and a short FAQ of 2-3 <h3> questions with answers.\n"
-        ."INTERNAL LINKS: weave natural, in-context <a> links (not a link dump) to these pages of OUR OWN site, using the EXACT URLs shown, only where they genuinely fit:\n".($links?:"  (none available yet)\n")
+        ."INTERNAL LINKS: weave about ".BLOG_INTERNAL_LINKS." natural, in-context <a> links (NOT a link dump) to these pages of OUR OWN site, using the EXACT URLs shown, only where they genuinely fit — and prefer linking to our other blog posts in the list when relevant:\n".($links?:"  (none available yet)\n")
         .$ext.html_quote_rule()
         ."Return JSON: {\"content\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}"; }
 
@@ -685,7 +779,7 @@ function write_page_via_ai($slug,$title,$prompt){ $pid=find_or_create_page($slug
     if(get_post_meta($pid,'_wcm_page_done',true)){ out("   [skip] $title (already done; RESET_PROGRESS to redo)",'#888'); return; }
     $cur=trim((string)get_post_field('post_content',$pid)); if($cur!=='' && !OVERWRITE_PAGES){ out("   [skip] $title already has content (OVERWRITE_PAGES=false)",'#888'); return; }
     [$d,$err]=ai_json($prompt); if(!$d||empty($d['content'])){ out("   [skip] $title — ".($err?:'no content'),'#f66'); return; }
-    $c=append_disclaimer(dedash((string)$d['content']));
+    $c=append_disclaimer(strip_future_internal_links(dedash((string)$d['content']),current_time('mysql')));   // a published page may only link to already-live pages/posts — strip any hallucinated link to a not-yet-published post
     wp_update_post(['ID'=>$pid,'post_content'=>$c]);
     if(!empty($d['meta_title'])) update_post_meta($pid,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
     if(!empty($d['meta_description'])) update_post_meta($pid,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
@@ -764,7 +858,7 @@ $ids=array_keys($P);
 out('Found '.count($ids).' products');
 if($ids) update_object_term_cache($ids,'product');   // ONE bulk load of every product's categories + tags, so the many get_the_terms() calls below (primary-category map, tag checks, category-safety reads) are cache hits instead of O(N) per-product queries
 
-if (ENABLE_LAWFUL_USE_GUARD) { $hay='';
+if (ENABLE_LAWFUL_USE_GUARD) { $hay='';   // lawful-use catalog guard — toggleable via the const above
     foreach($P as $d){ $hay.=strtolower($d['title']).' '; }
     foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false]) as $t){ $hay.=strtolower($t->name).' '; }
     $hits=array_values(array_unique(array_filter($GUARD_TERMS,fn($t)=>strpos($hay,$t)!==false)));
@@ -773,10 +867,28 @@ if (ENABLE_LAWFUL_USE_GUARD) { $hay='';
 // ---- RESET / REPROCESS (fires ONCE per arming; independent of which phases are enabled) ------------
 delete_option('wcm_offset');   // retire the old positional-offset resume
 if(RESET_PROGRESS || REPROCESS_IDS){ if(!get_option('wcm_reset_done')){   // a saved marker stops it repeating on refresh
-    if(RESET_PROGRESS){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ('_wcm_done','_wcm_page_done','_wcm_img_done')"); $wpdb->query("DELETE FROM {$wpdb->termmeta} WHERE meta_key='_wcm_cat_done'"); delete_option('wcm_grouping_done'); delete_option('wcm_stock_done'); delete_option('wcm_foreign_done'); delete_option('wcm_branding_done'); delete_option('wcm_blog_done'); delete_option('wcm_blog_titles'); delete_option('wcm_blog_start'); out("\nRESET_PROGRESS — progress wiped ONCE; reprocessing everything (products, categories, grouping, stock, foreign-links, pages, images, branding, blog). Existing blog posts are kept; a fresh title list is generated.",'#fa0'); }
+    if(RESET_PROGRESS){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key IN ('_wcm_done','_wcm_page_done','_wcm_img_done')"); $wpdb->query("DELETE FROM {$wpdb->termmeta} WHERE meta_key='_wcm_cat_done'"); delete_option('wcm_grouping_done'); delete_option('wcm_stock_done'); delete_option('wcm_foreign_done'); delete_option('wcm_branding_done'); delete_option('wcm_logo_att'); out("\nRESET_PROGRESS — progress wiped ONCE; reprocessing products, categories, grouping, stock, foreign-links, pages, images and branding. BLOG is left untouched (its done-flag, saved title list and schedule anchor are kept) so a reset can NEVER create a duplicate second batch of posts.",'#fa0'); }   // (previously also wiped wcm_blog_done/titles/start, which regenerated a fresh title list and doubled the blog)
     if(REPROCESS_IDS){ $rids=implode(',',array_map('intval',(array)REPROCESS_IDS)); if($rids!==''){ $wpdb->query("DELETE FROM {$wpdb->postmeta} WHERE meta_key='_wcm_done' AND post_id IN ($rids)"); out("\nREPROCESS_IDS — redoing ".count((array)REPROCESS_IDS)." specific product(s) ONCE.",'#fa0'); } }
     update_option('wcm_reset_done',1,false); } }
 else delete_option('wcm_reset_done');   // both off = re-arm for next time
+
+// ---- PHASE: SEARCH VISIBILITY (runs EVERY load — cheap, and the #1 silent reason a submitted sitemap never indexes) ----
+if(ENSURE_SEARCH_VISIBLE){ $bp=get_option('blog_public');
+    if($bp==='0'||$bp===0){ update_option('blog_public',1); out("\n⚠️  SEARCH ENGINES WERE BLOCKED — your site had \"Discourage search engines\" ON, so nothing could index. FIXED: search visibility is now ON.",'#fa0'); }   // warn ONLY when it was explicitly blocked
+    else { if((int)$bp!==1) update_option('blog_public',1); out("\n[ok] search visibility is ON (search engines allowed)",'#6f6'); } }   // missing/other -> set to 1 quietly (install default is already index; don't cry wolf)
+
+// ---- PHASE: REPAIR POST LINKS (maintenance-only — no AI, no new posts) ------
+// Re-validates internal links on every existing post against THAT post's own publish date, so any link pointing to a
+// not-yet-published post (a live/future 404) is unwrapped, then tops the count back up with valid targets. Fixes posts
+// that were written before the temporal link rule existed. Runs regardless of DO_BLOG so it can be used standalone.
+if(REPAIR_POST_LINKS){ out("\n--- Repair post links (strip links to not-yet-published posts) ---",'#6cf');
+    $rnow=current_time('mysql');
+    $rposts=get_posts(['post_type'=>'post','post_status'=>array('publish','future'),'numberposts'=>-1,'orderby'=>'date','order'=>'ASC']);
+    $rn=0; $rc=0; foreach($rposts as $rp){ $cut=(strcmp((string)$rp->post_date,$rnow)>0)?(string)$rp->post_date:$rnow; $html=(string)$rp->post_content;   // cutoff = max(post date, now): a LIVE post may link to anything live now; a SCHEDULED post is bound to its future date
+        [$fixed]=blog_filter_links($html,$cut);
+        if(strpos((string)$fixed,'<h2>Explore more</h2>')===false) $fixed=blog_topup_links($fixed,(int)BLOG_INTERNAL_LINKS,$cut);   // match the EXACT top-up heading (not the bare phrase, which could occur in prose) so we don't stack a second block, but still re-top-up posts that never had one
+        if($fixed!==$html){ wp_update_post(['ID'=>$rp->ID,'post_content'=>$fixed]); $rc++; } $rn++; }
+    out("   scanned $rn post(s); repaired links on $rc",'#6f6'); }
 
 // ---- PHASE: CATEGORIES (single catalog pass) -------------------------------
 $primary=[]; // pid => term_id
@@ -811,7 +923,7 @@ function related_of($pid,$primary,$groups,$P){ $out=[]; foreach(($groups[$primar
     $out[]=['name'=>$P[$o]['title'],'url'=>site_link(get_permalink($o))]; if(count($out)>=INTERLINKS_PER_PRODUCT) break; } return $out; }
 
 // ---- PHASE: PRODUCTS -------------------------------------------------------
-$batched=false; $processed=0; $aborted=false; $products_complete=false; $left=0;
+$batched=false; $processed=0; $aborted=false; $products_complete=true; $left=0;   // default TRUE so a run that intentionally skips the product phase (pages-only / REPAIR_POST_LINKS / branding-only maintenance) still counts as complete and can self-delete + re-arm RESET; the product block below sets the REAL value when it runs
 $want_product_ai = DO_SHORT_DESC||DO_LONG_DESC||DO_META||DO_TAGS||DO_PRICE;
 if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
     out("\n--- Products ---",'#6cf'); $tot=count($P); global $wpdb;
@@ -834,7 +946,7 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
                'tags'=>DO_TAGS&&(OVERWRITE_TAGS||!get_the_terms($pid,'product_tag')),   // get_the_terms hits the primed cache — no per-product query
                'price'=>DO_PRICE&&(OVERWRITE_PRICE||(PRODUCT_TYPE==='variable'?!$has_var:($price===''||$price===null))),
                'image'=>false,'unit'=>false];
-        $will_image = DO_IMAGE && !get_post_meta($pid,'_wcm_img_done',true) && !(SKIP_IF_HAS_IMAGE&&has_post_thumbnail($pid));   // decide ONCE whether an image will really be generated
+        $will_image = DO_IMAGE && !get_post_meta($pid,'_wcm_img_done',true) && !(SKIP_IF_HAS_IMAGE && has_post_thumbnail($pid) && !get_post_meta($pid,'_wcm_logo_img',true));   // decide ONCE whether an image will really be generated. A logo PLACEHOLDER (_wcm_logo_img) does not count as a real image, so generation replaces it
         $need['unit']=($need['short']&&SHORT_DESC_INCLUDE_UNIT)||$need['price']||$will_image;
         $need['image']=$will_image; // only ask the AI for image_subject/image_use when an image will actually be made (saves tokens on products that already have one)
         $need_ai=$need['short']||$need['long']||$need['meta']||$need['tags']||$need['price'];
@@ -851,7 +963,7 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
         $made_var=false;
         if($need['price'] && PRODUCT_TYPE==='variable' && !empty($data['variations']) && is_array($data['variations'])){
             $attr=trim((string)($data['attribute']??''))?:'Option'; $clean=[];
-            foreach($data['variations'] as $v){ $lb=trim((string)($v['label']??'')); $pr=round_price($v['price']??0); if($lb!==''&&$pr!=='') $clean[$lb]=$pr; }
+            foreach($data['variations'] as $v){ if(!is_array($v)) continue; $lb=trim((string)($v['label']??'')); $pr=round_price($v['price']??0); if($lb!==''&&$pr!=='') $clean[$lb]=$pr; }   // is_array guard: a stringy AI variation entry would otherwise throw on $v['label']
             if($clean && class_exists('WC_Product_Variable')){
                 if($has_var) foreach($p->get_children() as $old) wp_delete_post($old,true);   // clear old variations so re-runs don't stack duplicates
                 wp_set_object_terms($pid,'variable','product_type');
@@ -893,7 +1005,7 @@ if ($want_product_ai || DO_INTERLINKS || DO_IMAGE || REMOVE_FOREIGN_LINKS) {
         if($will_image){ [$u,$e]=ideogram_url(image_subject($pid,$name,$catname).'. '.image_style().'.');
             $use=trim((string)get_post_meta($pid,'_image_use',true)); if($use==='' && IMAGE_LABEL_USE_FALLBACK) $use=$catname;   // middle label line: AI 'use' phrase, else the category
             $label=['name'=>$name,'use'=>$use,'brand'=>brand()];
-            if($u){ [$att,$e2]=attach_image($u,$pid,$name.' product image',$name,$label); if($att){ update_post_meta($pid,'_wcm_img_done',1); out('   [image ok]','#6f6'); } else out("   [image] $e2",'#fa0'); } else out("   [image] $e",'#fa0'); }
+            if($u){ [$att,$e2]=attach_image($u,$pid,$name.' product image',$name,$label); if($att){ update_post_meta($pid,'_wcm_img_done',1); delete_post_meta($pid,'_wcm_logo_img'); out('   [image ok]','#6f6'); } else out("   [image] $e2",'#fa0'); } else out("   [image] $e",'#fa0'); }
 
         out('   [ok]'.($made_var?' + variations':''),'#6f6'); $processed++; $handled++;
         update_post_meta($pid,'_wcm_done',1);   // flag finished NOW so a server timeout keeps this product's progress
@@ -943,10 +1055,10 @@ if(!$batched && DO_CATEGORY_CONTENT){ out("\n--- Category descriptions ---",'#6c
     foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false]) as $t){ if(strtolower($t->slug)==='uncategorized') continue;
         if(get_term_meta($t->term_id,'_wcm_cat_done',true)){ out("   [skip] {$t->name} (already done — set RESET_PROGRESS=true to redo)",'#888'); continue; }
         $has=trim((string)$t->description)!==''; if($has&&!OVERWRITE_CATEGORY_DESC){ out("   [skip] {$t->name}",'#888'); continue; }
-        $plinks=[]; foreach(($groups[$t->term_id]??array_slice(get_posts(['post_type'=>'product','fields'=>'ids','numberposts'=>8,'tax_query'=>[['taxonomy'=>'product_cat','field'=>'term_id','terms'=>$t->term_id]]]),0,8)) as $pp){ $plinks[]=['name'=>get_the_title($pp),'url'=>site_link(get_permalink($pp))]; if(count($plinks)>=8) break; }
+        $plinks=[]; foreach(($groups[$t->term_id]??array_slice(get_posts(['post_type'=>'product','post_status'=>'publish','fields'=>'ids','numberposts'=>8,'tax_query'=>[['taxonomy'=>'product_cat','field'=>'term_id','terms'=>$t->term_id]]]),0,8)) as $pp){ if(get_post_status($pp)!=='publish') continue; $plinks[]=['name'=>get_the_title($pp),'url'=>site_link(get_permalink($pp))]; if(count($plinks)>=8) break; }   // publish-only: never surface a draft/pending product in the "Shop This Category" links
         [$d,$err]=ai_json("Write an SEO description, ".words_phrase('180-260').", for the product category \"{$t->name}\" at ".brand()." selling ".STORE_NICHE.". ".voice_rules().compliance_clause()."Open with the focus keyword; explain what it covers and why buy here; one <h2>. No invented links. ".html_quote_rule()."Return JSON: {\"description\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}");
         if(!$d||empty($d['description'])){ out("   [skip] {$t->name} — ".($err?:'no content'),'#f66'); continue; }
-        $desc=dedash((string)$d['description']); $have=existing_hrefs($desc); $li='';
+        $desc=strip_future_internal_links(dedash((string)$d['description']),current_time('mysql')); $have=existing_hrefs($desc); $li='';   // category desc is live now -> unwrap any link to a not-yet-published post
         foreach($plinks as $r){ if(!in_array($r['url'],$have,true)) $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; }
         if($li) $desc.="\n<h2>Shop This Category</h2>\n<ul>$li</ul>"; $desc=append_disclaimer($desc);
         $r=wp_update_term($t->term_id,'product_cat',['description'=>$desc]);
@@ -1021,6 +1133,9 @@ if(!$batched){
         if(is_flatsome() && BLOG_LAYOUT!==''){ if(get_theme_mod('blog_post_layout')!==BLOG_LAYOUT || get_theme_mod('blog_layout')!==BLOG_LAYOUT){ set_theme_mod('blog_post_layout',BLOG_LAYOUT); set_theme_mod('blog_layout',BLOG_LAYOUT); out("   [ok] blog layout -> ".BLOG_LAYOUT,'#6f6'); } }
         // make sure posts actually list on the existing /blog page
         $bpg=get_page_by_path('blog'); if($bpg && (int)get_option('page_for_posts')!==(int)$bpg->ID){ update_option('page_for_posts',(int)$bpg->ID); out("   [ok] /blog set as the posts page",'#6f6'); }
+        // Catch-up: publish any scheduled post whose time has already passed (WP-Cron missed it while the site was down / had no traffic). Runs every load, even after the batch is complete. One indexed query; loops only over the overdue few.
+        $overdue=$wpdb->get_col($wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type='post' AND post_status='future' AND post_date_gmt<=%s",gmdate('Y-m-d H:i:s')));
+        if($overdue){ $pn=0; foreach($overdue as $oid){ wp_publish_post((int)$oid); if(get_post_status((int)$oid)==='publish') $pn++; } if($pn) out("   [ok] published $pn overdue scheduled post(s) that WP-Cron had missed",'#6f6'); }
         if(get_option('wcm_blog_done')) out("\n--- Blog --- (already done; RESET_PROGRESS to redo)",'#888');
         else { out("\n--- Blog (".BLOG_COUNT." posts: #1 live, rest every ".max(1,(int)BLOG_CADENCE_DAYS)." day(s)) ---",'#6cf');
             $titles=json_decode((string)get_option('wcm_blog_titles'),true);   // reuse the saved list across resumes so schedule slots stay put
@@ -1029,40 +1144,44 @@ if(!$batched){
                 $titles=(is_array($td)&&!empty($td['titles']))?array_values(array_unique(array_filter(array_map(fn($x)=>trim((string)$x),(array)$td['titles'])))):[];
                 $titles=array_slice($titles,0,BLOG_COUNT);
                 if($titles) update_option('wcm_blog_titles',wp_json_encode($titles),false); }
-            if(!$titles){ out('   [skip] blog — could not generate titles','#f66'); }
+            if(!$titles){ out('   [skip] blog — could not generate titles','#f66'); $blog_incomplete=true; }   // title call failed -> keep the file and retry next load; do NOT let $job_done self-delete with zero posts written
             else {
                 $now=current_time('timestamp'); $base=(int)get_option('wcm_blog_start'); if($base<=0){ $base=$now; update_option('wcm_blog_start',$base,false); }   // fixed anchor date for the whole schedule
                 $cad=max(1,(int)BLOG_CADENCE_DAYS); $cap=BLOG_PER_RUN>0?(int)BLOG_PER_RUN:PHP_INT_MAX;
                 $cat_id=0; if(BLOG_CATEGORY!==''){ $bt=get_term_by('name',BLOG_CATEGORY,'category'); if($bt&&!is_wp_error($bt)) $cat_id=(int)$bt->term_id; else { $ins=wp_insert_term(BLOG_CATEGORY,'category'); if(!is_wp_error($ins)) $cat_id=(int)$ins['term_id']; } }
                 $made=0; $remaining=0; $fail=0;
                 $existing=array_flip($wpdb->get_col("SELECT post_title FROM {$wpdb->posts} WHERE post_type='post' AND post_status<>'trash'"));   // ONE query for all existing post titles -> O(1) dedup per title instead of a full-table title scan on every title
+                foreach($wpdb->get_col("SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_wcm_blog_title'") as $bk){ $existing[$bk]=1; }   // primary done-marker: the EXACT original title we stamped on each created post. Immune to WP re-encoding the stored post_title (naked '&' -> '&amp;' etc.), which would otherwise miss the match and re-create the post
                 foreach($titles as $idx=>$ti){ $ti=trim((string)$ti); if($ti==='') continue;
                     if(isset($existing[$ti])) continue;   // already created on a prior run — keeps its slot, don't touch
                     if($made>=$cap){ $remaining++; continue; }   // per-run cap reached: tally what's left, write it next refresh
                     @set_time_limit(0);
-                    [$d,$err]=ai_json(blog_article_prompt($ti,$idx));
+                    $off=BLOG_FIRST_LIVE ? $idx*$cad : ($idx+1)*$cad; $when=$base+$off*86400; $due=($when<=$now);   // schedule slot FIRST — links are validated against WHEN THIS POST GOES LIVE, so it may link to any post that publishes at/before $dl
+                    $status=$due?'publish':'future'; $dl=date('Y-m-d H:i:s',$when);
+                    [$d,$err]=ai_json(blog_article_prompt($ti,$idx,$dl));
                     if(!$d||empty($d['content'])){ out("   [skip] $ti — ".($err?:'no content'),'#f66');
                         if(strpos((string)$err,'CREDIT')!==false){ out('   [STOP] AI credit/billing exhausted — refresh after fixing billing to resume.','#f66'); $blog_incomplete=true; break; }
                         if(++$fail>=3){ out('   [STOP] 3 blog calls failed in a row — refresh to resume from here.','#f66'); $blog_incomplete=true; break; } continue; }
                     $fail=0;
                     $html=demote_h1((string)$d['content']);              // theme already prints the title as the H1
                     $html=dedash($html);
-                    [$html,$extk]=blog_filter_links($html);              // drop business/competitor links, keep at most one authoritative source
-                    $html=blog_topup_links($html,(int)BLOG_INTERNAL_LINKS);
+                    [$html,$extk]=blog_filter_links($html,$dl);          // drop business/competitor links + any internal link not live by $dl; keep at most one authoritative source
+                    $html=blog_topup_links($html,(int)BLOG_INTERNAL_LINKS,$dl);
                     $html=append_disclaimer($html);
-                    $off=BLOG_FIRST_LIVE ? $idx*$cad : ($idx+1)*$cad; $when=$base+$off*86400; $due=($when<=$now);
-                    $status=$due?'publish':'future'; $dl=date('Y-m-d H:i:s',$when);
                     $args=['post_type'=>'post','post_title'=>$ti,'post_status'=>$status,'post_content'=>$html,'post_date'=>$dl,'post_date_gmt'=>get_gmt_from_date($dl)];
                     if($cat_id) $args['post_category']=[$cat_id];
                     $post=wp_insert_post($args,true);
                     if(is_wp_error($post)){ out("   [skip] $ti — ".$post->get_error_message(),'#f66'); continue; }
+                    update_post_meta($post,'_wcm_blog_title',$ti);   // stamp the EXACT original title as the done-marker so this post is never re-created on a later batch/refresh, regardless of how WP stored post_title
+                    $lp=site_link(get_permalink($post)); if($lp&&!is_wp_error($lp)) blog_known_posts(['url'=>$lp,'name'=>$ti,'date'=>$dl]);   // register this post so LATER posts in this run can link back to it (it publishes before them)
                     if(!empty($d['meta_title'])) update_post_meta($post,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
                     if(!empty($d['meta_description'])) update_post_meta($post,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
                     if(!empty($d['focus_keyword'])) update_post_meta($post,'rank_math_focus_keyword',(string)$d['focus_keyword']);
                     $made++; $existing[$ti]=1; $when_tag=$due?('live '.date('M j',$when)):('scheduled '.date('M j, Y',$when));
                     out("   [ok] $ti — $when_tag".($extk?' + authoritative link':''),'#6f6'); }
                 if(!$blog_incomplete){
-                    if($remaining>0){ $blog_incomplete=true; out("   [batch] wrote $made now; $remaining post(s) left — refresh the URL to write the next batch.",'#6cf'); }
+                    $uncreated=0; foreach($titles as $tt){ $tt=trim((string)$tt); if($tt!=='' && !isset($existing[$tt])) $uncreated++; }   // completion is measured by ACTUAL coverage of every title (capped OR failed), not just the per-run cap counter — so a title whose article call failed is NOT silently dropped and marked done
+                    if($uncreated>0){ $blog_incomplete=true; out("   [batch] wrote $made now; $uncreated post(s) still to write (capped or failed) — refresh the URL to continue.",'#6cf'); }
                     else { update_option('wcm_blog_done',1,false); out("   [done] all ".count($titles)." blog posts created (".$made." this run).",'#6f6'); } } } }
     }
 }
@@ -1080,19 +1199,35 @@ if(!$batched && DO_BRANDING){ if(get_option('wcm_branding_done')) out("\n--- Bra
     $cn=0; if($setmod('color_primary',$pal['primary'])) $cn++; if($setmod('color_secondary',$pal['secondary'])) $cn++;
     if($setmod('color_success',$pal['accent'])) $cn++; if($setmod('color_links',$pal['primary'])) $cn++;
     out("   [ok] set $cn Flatsome color option(s)",'#6f6');
-    // 3) Logo (icon + brand name) — only if none set, unless overwrite
+    // 3) Logo — provided URL (LOGO_URL) wins; else generate (if GENERATE_LOGO). Only if none set, unless overwrite.
     $have_logo = get_theme_mod('site_logo') || get_theme_mod('custom_logo');
     if($have_logo && !$ov){ out('   [skip] logo already set (BRANDING_OVERWRITE=false)','#888'); }
-    elseif(IDEOGRAM_API_KEY===''){ out('   [skip] logo — IDEOGRAM_API_KEY empty (name + colors still applied)','#fa0'); }
-    else { [$lu,$lp]=generate_logo($pal);
+    elseif(LOGO_URL!==''){ $att=sideload_logo(LOGO_URL);
+        if(!$att){ out('   [skip] logo — could not fetch LOGO_URL','#fa0'); }
+        else { $u=wp_get_attachment_url($att); if($u) set_theme_mod('site_logo',$u); set_theme_mod('custom_logo',$att); update_option('wcm_logo_att',$att,false); out('   [ok] logo set from LOGO_URL','#6f6'); } }
+    elseif(!GENERATE_LOGO){ out('   [skip] logo — GENERATE_LOGO is off and no LOGO_URL set','#888'); }
+    else { [$lu,$lp]=generate_logo($pal);   // built by the text AI (SVG icon) + code wordmark, with a monogram fallback — no image API
         if(!$lu){ out("   [skip] logo — $lp",'#fa0'); }
         else { $att=media_handle_sideload(['name'=>'logo.png','tmp_name'=>$lp],0,brand().' logo');
             if(is_wp_error($att)){ @unlink($lp); out('   [skip] logo attach — '.$att->get_error_message(),'#fa0'); }
-            else { set_theme_mod('site_logo',$lu);                 // Flatsome: raw URL string used directly as <img src>
+            else { $u=wp_get_attachment_url($att); if($u) set_theme_mod('site_logo',$u);   // Flatsome uses this URL directly as <img src>. Derive it from the STORED attachment — media_handle_sideload already consumed $lp, so $lu now points at a deleted file
                 set_theme_mod('custom_logo',(int)$att);            // WordPress core custom-logo (attachment ID) as fallback
                 update_post_meta($att,'_wp_attachment_image_alt',brand().' logo');
+                update_option('wcm_logo_att',(int)$att,false);     // so USE_LOGO_AS_PRODUCT_IMAGE reuses this same attachment
                 out('   [ok] logo generated + set','#6f6'); } } }
     update_option('wcm_branding_done',1,false); } }
+
+// ---- PHASE: LOGO AS PRODUCT IMAGE (fill products that have NO featured image) ------
+// No image API: point each imageless product's thumbnail at the ONE resolved logo attachment (reused, so no duplicate media).
+// Runs after branding so a just-generated/URL logo is available. Idempotent + self-limiting (only products still missing an image).
+if(!$batched && USE_LOGO_AS_PRODUCT_IMAGE){ out("\n--- Logo as product image ---",'#6cf');
+    $logo_att=resolve_logo_attachment();
+    if(!$logo_att){ out('   [skip] no logo available — set LOGO_URL, run branding, or have a theme logo first','#fa0'); }
+    else { $miss=$wpdb->get_col(
+        "SELECT p.ID FROM {$wpdb->posts} p LEFT JOIN {$wpdb->postmeta} t ON t.post_id=p.ID AND t.meta_key='_thumbnail_id'
+          WHERE p.post_type='product' AND p.post_status NOT IN ('trash','auto-draft') AND (t.meta_value IS NULL OR t.meta_value='' OR t.meta_value='0')");   // O(products still missing an image)
+        $n=0; foreach($miss as $pp){ $pp=(int)$pp; set_post_thumbnail($pp,$logo_att); update_post_meta($pp,'_wcm_logo_img',1); $n++; }   // flag it a PLACEHOLDER so a later DO_IMAGE run (with RESET) replaces it
+        out("   set the logo as the image on $n product(s) that had none",'#6f6'); } }
 
 // best-effort cache purge so new content/prices/stock show without a manual cache clear (each is a no-op if not installed)
 if(function_exists('wp_cache_flush')) wp_cache_flush();          // object cache (Redis/Memcached)
