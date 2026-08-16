@@ -77,7 +77,7 @@ const MAX_TAGS        = 5;
 
 const DO_INTERLINKS   = true;   const INTERLINKS_PER_PRODUCT = 3;   // deterministic, no AI
 const REMOVE_FOREIGN_LINKS = true; // strip links pointing to OTHER domains (keeps the anchor text)
-const SITE_DOMAIN = '';             // your REAL domain, e.g. 'https://mysite.com'. Leave EMPTY to auto-detect
+const SITE_DOMAIN = '';             // your REAL domain WITH scheme, e.g. 'https://mysite.com' (include the subfolder if WordPress lives in one: 'https://mysite.com/shop'). Leave EMPTY to auto-detect — recommended when the site is already on its real domain
                                     // from the live site. Set it when running locally or on a temporary URL so
                                     // generated interlinks + foreign-link stripping use your real domain.
 
@@ -149,7 +149,7 @@ const OVERWRITE_PAGES = true;                 // legal/info pages: overwrite if 
 // ---- BRANDING (site identity: name, colors, logo — the "Appearance > Customize" bits) ----------------
 const ENSURE_SEARCH_VISIBLE = true;   // force "Search engine visibility" ON (blog_public=1) every run. Restored/migrated/staging sites often silently carry the "Discourage search engines" flag, which noindexes the WHOLE site so nothing indexes no matter how many sitemaps you submit. Leave ON.
 const DO_BRANDING       = true;   // set the site title, an AI-chosen color palette, and a generated logo (icon + brand name)
-const BRANDING_OVERWRITE= true;   // false = set each item ONLY where the site hasn't been branded yet (safe). true = force name/colors/logo every run
+const BRANDING_OVERWRITE= false;   // false = set each item ONLY where the site hasn't been branded yet (safe). true = force name/colors/logo every run
 const SITE_TAGLINE      = '';      // '' = keep the current tagline  (the site TITLE is always BRAND_NAME — no separate setting)
 const LOGO_BG           = '#ffffff';   // logo canvas background. White blends with Flatsome's near-white header. Use a dark hex ONLY if your header is dark
 const LOGO_URL          = '';      // OPTIONAL: paste a PUBLIC/live logo image URL (png/jpg) to USE that as the logo (downloaded into the media library once). Overrides generation. Also used by USE_LOGO_AS_PRODUCT_IMAGE
@@ -329,9 +329,12 @@ function company_facts(){ return "COMPANY FACTS — use these EXACT details wher
 function excerpt($html,$n=280){ return trim(mb_substr(wp_strip_all_tags((string)$html),0,$n)); }
 function existing_hrefs($html){ preg_match_all('/href=["\']([^"\']+)["\']/',(string)$html,$m); return $m[1]; }
 // --- domain handling: use SITE_DOMAIN when set, otherwise the live site's own URL ---
-function site_base(){ static $b=null; if($b===null){ $b=SITE_DOMAIN!==''?rtrim(SITE_DOMAIN,'/'):rtrim((string)home_url(),'/'); } return $b; }
+function site_base(){ static $b=null; if($b===null){ $b=SITE_DOMAIN!==''?rtrim(SITE_DOMAIN,'/'):rtrim((string)home_url(),'/');
+    if($b!=='' && !preg_match('#^https?://#i',$b)){ $sc=parse_url((string)home_url(),PHP_URL_SCHEME)?:'https'; $b=$sc.'://'.preg_replace('#^/+#','',$b); } } return $b; }   // if SITE_DOMAIN was set WITHOUT a scheme (e.g. 'domain.com'), add https:// — otherwise rewritten hrefs become schemeless ("domain.com/...") and the browser DOUBLES the domain (domain.com/domain.com/...) -> 404
 function site_host(){ static $h=null; if($h===null){ $h=preg_replace('/^www\./','',strtolower((string)parse_url(site_base(),PHP_URL_HOST))); } return $h; }
-function site_link($u){ if(SITE_DOMAIN===''||!$u||!is_string($u)) return $u; $h=rtrim((string)home_url(),'/'); $b=rtrim(SITE_DOMAIN,'/'); if($h===$b) return $u; return strpos($u,$h)===0?$b.substr($u,strlen($h)):$u; }
+function site_link($u){ if(SITE_DOMAIN===''||!$u||!is_string($u)) return $u; $h=rtrim((string)home_url(),'/'); $b=site_base(); if($h===$b) return $u; return strpos($u,$h)===0?$b.substr($u,strlen($h)):$u; }   // $b is scheme-normalized (via site_base) so the result is always an absolute URL, never a schemeless "domain.com/..." that a browser would double
+function post_pretty_link($p){ $po=is_object($p)?$p:get_post($p); if(!$po) return ''; if($po->post_status==='publish') return get_permalink($po);
+    $c=clone $po; $c->post_status='publish'; return get_permalink($c); }   // scheduled/future posts: get_permalink() returns an ugly ?p=ID (which 404s until the post is live); a publish-status clone yields the eventual PRETTY url (slug + date) — clean for SEO and it resolves the moment the post goes live
 // --- foreign-link stripping: keep this site's links, unwrap links to other domains ---
 function is_foreign_url($url){ $url=trim((string)$url); if($url==='') return false;
     if($url[0]==='#') return false;                                   // in-page anchor
@@ -339,7 +342,8 @@ function is_foreign_url($url){ $url=trim((string)$url); if($url==='') return fal
     $scheme=strtolower((string)parse_url($url,PHP_URL_SCHEME));
     if(in_array($scheme,['mailto','tel','javascript'],true)) return false;
     $host=parse_url($url,PHP_URL_HOST); if(!$host) return false;       // relative (no host) = internal
-    return preg_replace('/^www\./','',strtolower($host))!==site_host(); }
+    $h=preg_replace('/^www\./','',strtolower($host)); $live=preg_replace('/^www\./','',strtolower((string)parse_url((string)home_url(),PHP_URL_HOST)));
+    return $h!==site_host() && $h!==$live; }   // internal if it matches EITHER the configured real domain OR the current live host (so on staging we don't unwrap the site's own absolute self-links)
 function strip_foreign_links($html){ if(strpos((string)$html,'<a')===false) return (string)$html;
     return preg_replace_callback('/<a\b[^>]*\bhref=["\']([^"\']*)["\'][^>]*>(.*?)<\/a>/is',
         fn($m)=>is_foreign_url($m[1])?$m[2]:$m[0], (string)$html); }
@@ -360,7 +364,8 @@ function field_need($cur,$mode){ $cur=(string)$cur;
     if($mode==='fill') return trim($cur)==='';           // only when empty
     return trim($cur)==='' || strpos($cur,APPEND_SIG)===false; }   // append: empty, or not yet appended
 /** apply text per mode. Returns [value, changed]. Mirrors field_need exactly. */
-function round_price($v){ $v=(float)preg_replace('/[^0-9.]/','',(string)$v); if($v<=0) return '';   // return '' for missing/invalid so callers skip (both test $pr!=='')
+function round_price($v){ $s=preg_replace('/[^0-9.]/','',(string)$v); if(substr_count($s,'.')>1){ $p=strrpos($s,'.'); $s=str_replace('.','',substr($s,0,$p)).substr($s,$p); }   // collapse thousands-dot noise (e.g. "1.234.56" -> "1234.56") so only the last dot is the decimal point
+    $v=(float)$s; if($v<=0) return '';   // return '' for missing/invalid so callers skip (both test $pr!=='')
     if(PRICE_ENDING==='') return (string)(int)round($v);                              // whole number (e.g. 24.40 -> "24")
     return number_format(floor($v)+(float)PRICE_ENDING,2,'.',''); }                   // charm price: keep the dollar part, force the configured ending (e.g. 24.40 -> "24.99")
 function apply_text($cur,$new,$mode){ $cur=(string)$cur; $new=(string)$new; if($new==='') return [$cur,false];
@@ -651,7 +656,7 @@ function blog_static_pool(){ static $p=null; if($p!==null) return $p; $raw=[];
     $seen=[]; $p=[]; foreach($raw as $r){ $u=site_link($r['url']); if(!$u||is_wp_error($u)||isset($seen[$u])) continue; $seen[$u]=1; $p[]=['url'=>$u,'name'=>$r['name']]; } return $p; }
 // Every known blog post (publish + future) with its LOCAL publish date string. Seeds once from the DB, then accumulates posts we create this run (call with $add) so later posts can link back to earlier ones in the SAME batch.
 function blog_known_posts($add=null){ static $l=null;
-    if($l===null){ $l=[]; foreach(get_posts(['post_type'=>'post','post_status'=>array('publish','future'),'numberposts'=>-1,'orderby'=>'date','order'=>'ASC']) as $po){ $u=site_link(get_permalink($po)); if($u&&!is_wp_error($u)) $l[]=['url'=>$u,'name'=>get_the_title($po),'date'=>(string)$po->post_date]; } }
+    if($l===null){ $l=[]; foreach(get_posts(['post_type'=>'post','post_status'=>array('publish','future'),'numberposts'=>-1,'orderby'=>'date','order'=>'ASC']) as $po){ $u=site_link(post_pretty_link($po)); if($u&&!is_wp_error($u)) $l[]=['url'=>$u,'name'=>get_the_title($po),'date'=>(string)$po->post_date]; } }   // pretty URL even for future posts (not ?p=ID)
     if(is_array($add)) $l[]=$add; return $l; }
 // Links a post publishing at $cut may use: the always-live pool PLUS any blog post that goes live at or before $cut (so the link is valid the moment THIS post appears). $cut = the authoring post's local 'Y-m-d H:i:s'.
 function blog_linkable($cut){ $pool=blog_static_pool(); foreach(blog_known_posts() as $b){ if(strcmp((string)$b['date'],(string)$cut)<=0) $pool[]=['url'=>$b['url'],'name'=>$b['name']]; } return $pool; }
@@ -779,7 +784,8 @@ function write_page_via_ai($slug,$title,$prompt){ $pid=find_or_create_page($slug
     if(get_post_meta($pid,'_wcm_page_done',true)){ out("   [skip] $title (already done; RESET_PROGRESS to redo)",'#888'); return; }
     $cur=trim((string)get_post_field('post_content',$pid)); if($cur!=='' && !OVERWRITE_PAGES){ out("   [skip] $title already has content (OVERWRITE_PAGES=false)",'#888'); return; }
     [$d,$err]=ai_json($prompt); if(!$d||empty($d['content'])){ out("   [skip] $title — ".($err?:'no content'),'#f66'); return; }
-    $c=append_disclaimer(strip_future_internal_links(dedash((string)$d['content']),current_time('mysql')));   // a published page may only link to already-live pages/posts — strip any hallucinated link to a not-yet-published post
+    $c=dedash((string)$d['content']); if(REMOVE_FOREIGN_LINKS) $c=strip_foreign_links($c);   // strip off-site/competitor links from AI pages too (the one-shot REMOVE_FOREIGN_LINKS phase runs BEFORE these pages exist, so it never reaches them)
+    $c=append_disclaimer(strip_future_internal_links($c,current_time('mysql')));   // a published page may only link to already-live pages/posts — strip any hallucinated link to a not-yet-published post
     wp_update_post(['ID'=>$pid,'post_content'=>$c]);
     if(!empty($d['meta_title'])) update_post_meta($pid,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
     if(!empty($d['meta_description'])) update_post_meta($pid,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
@@ -1044,11 +1050,11 @@ if(!$batched && FORCE_IN_STOCK){ if(get_option('wcm_stock_done')) out("\n--- For
         $pr->save(); $sn++; }
     out("   set $sn products/variations in stock",'#6f6'); update_option('wcm_stock_done',1,false); } }
 
-// ---- PHASE: REMOVE FOREIGN LINKS (categories + pages + posts) --------------
+// ---- PHASE: REMOVE FOREIGN LINKS (categories + pages only — NOT blog posts, which keep their one authoritative .gov link) --------------
 if(!$batched && REMOVE_FOREIGN_LINKS){ if(get_option('wcm_foreign_done')) out("\n--- Remove foreign links --- (already done; RESET_PROGRESS to redo)",'#888'); else { out("\n--- Removing foreign links ---",'#6cf'); $fn=0;
     foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false]) as $t){ $d=(string)$t->description; $c=strip_foreign_links($d); if($c!==$d){ wp_update_term($t->term_id,'product_cat',['description'=>$c]); $fn++; } }
     foreach(get_posts(['post_type'=>'page','post_status'=>'publish','numberposts'=>-1,'fields'=>'ids']) as $pp){ $d=(string)get_post_field('post_content',$pp); $c=strip_foreign_links($d); if($c!==$d){ wp_update_post(['ID'=>$pp,'post_content'=>$c]); $fn++; } }   // pages only: blog posts curate their own links (one authoritative .gov/.edu outbound is kept on purpose), so this blanket sweep must not strip it
-    out("   cleaned $fn category/page/post items (product descriptions were cleaned in the product pass)",'#6f6'); update_option('wcm_foreign_done',1,false); } }
+    out("   cleaned $fn category/page item(s) (product descriptions were cleaned in the product pass; blog posts keep their authoritative link)",'#6f6'); update_option('wcm_foreign_done',1,false); } }
 
 // ---- PHASE: CATEGORY DESCRIPTIONS ------------------------------------------
 if(!$batched && DO_CATEGORY_CONTENT){ out("\n--- Category descriptions ---",'#6cf');
@@ -1058,7 +1064,7 @@ if(!$batched && DO_CATEGORY_CONTENT){ out("\n--- Category descriptions ---",'#6c
         $plinks=[]; foreach(($groups[$t->term_id]??array_slice(get_posts(['post_type'=>'product','post_status'=>'publish','fields'=>'ids','numberposts'=>8,'tax_query'=>[['taxonomy'=>'product_cat','field'=>'term_id','terms'=>$t->term_id]]]),0,8)) as $pp){ if(get_post_status($pp)!=='publish') continue; $plinks[]=['name'=>get_the_title($pp),'url'=>site_link(get_permalink($pp))]; if(count($plinks)>=8) break; }   // publish-only: never surface a draft/pending product in the "Shop This Category" links
         [$d,$err]=ai_json("Write an SEO description, ".words_phrase('180-260').", for the product category \"{$t->name}\" at ".brand()." selling ".STORE_NICHE.". ".voice_rules().compliance_clause()."Open with the focus keyword; explain what it covers and why buy here; one <h2>. No invented links. ".html_quote_rule()."Return JSON: {\"description\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}");
         if(!$d||empty($d['description'])){ out("   [skip] {$t->name} — ".($err?:'no content'),'#f66'); continue; }
-        $desc=strip_future_internal_links(dedash((string)$d['description']),current_time('mysql')); $have=existing_hrefs($desc); $li='';   // category desc is live now -> unwrap any link to a not-yet-published post
+        $desc=dedash((string)$d['description']); if(REMOVE_FOREIGN_LINKS) $desc=strip_foreign_links($desc); $desc=strip_future_internal_links($desc,current_time('mysql')); $have=existing_hrefs($desc); $li='';   // strip off-site links (foreign phase never reaches category descriptions) + any link to a not-yet-published post
         foreach($plinks as $r){ if(!in_array($r['url'],$have,true)) $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; }
         if($li) $desc.="\n<h2>Shop This Category</h2>\n<ul>$li</ul>"; $desc=append_disclaimer($desc);
         $r=wp_update_term($t->term_id,'product_cat',['description'=>$desc]);
@@ -1149,12 +1155,12 @@ if(!$batched){
                 $now=current_time('timestamp'); $base=(int)get_option('wcm_blog_start'); if($base<=0){ $base=$now; update_option('wcm_blog_start',$base,false); }   // fixed anchor date for the whole schedule
                 $cad=max(1,(int)BLOG_CADENCE_DAYS); $cap=BLOG_PER_RUN>0?(int)BLOG_PER_RUN:PHP_INT_MAX;
                 $cat_id=0; if(BLOG_CATEGORY!==''){ $bt=get_term_by('name',BLOG_CATEGORY,'category'); if($bt&&!is_wp_error($bt)) $cat_id=(int)$bt->term_id; else { $ins=wp_insert_term(BLOG_CATEGORY,'category'); if(!is_wp_error($ins)) $cat_id=(int)$ins['term_id']; } }
-                $made=0; $remaining=0; $fail=0;
+                $made=0; $fail=0;
                 $existing=array_flip($wpdb->get_col("SELECT post_title FROM {$wpdb->posts} WHERE post_type='post' AND post_status<>'trash'"));   // ONE query for all existing post titles -> O(1) dedup per title instead of a full-table title scan on every title
                 foreach($wpdb->get_col("SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_wcm_blog_title'") as $bk){ $existing[$bk]=1; }   // primary done-marker: the EXACT original title we stamped on each created post. Immune to WP re-encoding the stored post_title (naked '&' -> '&amp;' etc.), which would otherwise miss the match and re-create the post
                 foreach($titles as $idx=>$ti){ $ti=trim((string)$ti); if($ti==='') continue;
                     if(isset($existing[$ti])) continue;   // already created on a prior run — keeps its slot, don't touch
-                    if($made>=$cap){ $remaining++; continue; }   // per-run cap reached: tally what's left, write it next refresh
+                    if($made>=$cap){ continue; }   // per-run cap reached: skip; the $uncreated coverage check below marks the run incomplete so the rest write next refresh
                     @set_time_limit(0);
                     $off=BLOG_FIRST_LIVE ? $idx*$cad : ($idx+1)*$cad; $when=$base+$off*86400; $due=($when<=$now);   // schedule slot FIRST — links are validated against WHEN THIS POST GOES LIVE, so it may link to any post that publishes at/before $dl
                     $status=$due?'publish':'future'; $dl=date('Y-m-d H:i:s',$when);
@@ -1173,7 +1179,7 @@ if(!$batched){
                     $post=wp_insert_post($args,true);
                     if(is_wp_error($post)){ out("   [skip] $ti — ".$post->get_error_message(),'#f66'); continue; }
                     update_post_meta($post,'_wcm_blog_title',$ti);   // stamp the EXACT original title as the done-marker so this post is never re-created on a later batch/refresh, regardless of how WP stored post_title
-                    $lp=site_link(get_permalink($post)); if($lp&&!is_wp_error($lp)) blog_known_posts(['url'=>$lp,'name'=>$ti,'date'=>$dl]);   // register this post so LATER posts in this run can link back to it (it publishes before them)
+                    $lp=site_link(post_pretty_link($post)); if($lp&&!is_wp_error($lp)) blog_known_posts(['url'=>$lp,'name'=>$ti,'date'=>$dl]);   // register this post (PRETTY url even though it's scheduled) so LATER posts in this run can link back to it
                     if(!empty($d['meta_title'])) update_post_meta($post,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
                     if(!empty($d['meta_description'])) update_post_meta($post,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
                     if(!empty($d['focus_keyword'])) update_post_meta($post,'rank_math_focus_keyword',(string)$d['focus_keyword']);
