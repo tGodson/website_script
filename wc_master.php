@@ -67,12 +67,12 @@ const DO_SHORT_DESC   = true;   const SHORT_DESC_MODE = 'fill';  // how to write
 const DO_LONG_DESC    = true;   const LONG_DESC_MODE  = 'fill';  // 'append' | 'overwrite' | 'fill'
 const SHORT_DESC_WORDS = '80-130';    // word RANGE (soft target, not a hard stop) so the AI has room to write well. A single number like '120' also works
 const LONG_DESC_WORDS  = '600-900';   // word RANGE for the long description. A single number (e.g. '600') also works
-const DO_META         = true;   const OVERWRITE_META  = false;   // Rank Math meta
-const DO_TAGS         = true;   const OVERWRITE_TAGS  = false;  // false = fill only if empty
-const DO_PRICE        = false;   const OVERWRITE_PRICE = false;  // false = set only if empty
+const DO_META         = true;   const OVERWRITE_META  = true;   // Rank Math meta
+const DO_TAGS         = true;   const OVERWRITE_TAGS  = true;  // false = fill only if empty
+const DO_PRICE        = true;   const OVERWRITE_PRICE = false;  // false = set only if empty
 const PRODUCT_TYPE    = 'simple';               // 'simple' or 'variable' (AI proposes options)
 const PRICE_ENDING    = '.99';                  // '' = whole number
-const SHORT_DESC_INCLUDE_UNIT = true;           // add "Sold as: <unit>" to short desc?
+const SHORT_DESC_INCLUDE_UNIT = false;           // add "Sold as: <unit>" to short desc?
 const MAX_TAGS        = 5;
 
 const DO_INTERLINKS   = true;   const INTERLINKS_PER_PRODUCT = 3;   // deterministic, no AI
@@ -137,11 +137,14 @@ const DO_BLOG       = true;   // create SEO blog posts: post #1 goes live now, t
 const BLOG_COUNT          = 45;      // total posts to create (spread across refreshes if BLOG_PER_RUN is set)
 const BLOG_CADENCE_DAYS   = 2;       // days between scheduled posts. Your example (Mon, Wed, Fri, Sun) = every 2 days. Set 1 for daily
 const BLOG_FIRST_LIVE     = true;    // true = publish post #1 immediately, schedule #2.. into the future. false = schedule ALL (nothing live today)
-const BLOG_PER_RUN        = 8;       // max posts to WRITE per page-load, so a 45-post run can't time out — refresh to write the next batch. 0 = all at once
-const BLOG_INTERNAL_LINKS = 4;       // minimum internal links per post (shop / categories / products / other posts). Guaranteed by a deterministic top-up
+const BLOG_PER_RUN        = 15;       // max posts to WRITE per page-load, so a 45-post run can't time out — refresh to write the next batch. 0 = all at once
+const BLOG_INTERNAL_LINKS = 5;       // minimum internal links per post (shop / categories / products / other posts). Guaranteed by a deterministic top-up
 const BLOG_EXTERNAL_LINK  = true;    // add ONE outbound link to an authoritative .gov/.mil/.edu/.int or public info/legal source — never a business/competitor
+const BLOG_EXTERNAL_URL   = '';      // OPTIONAL deterministic fallback: a niche-relevant AUTHORITATIVE url (e.g. a .gov/.edu page or a Wikipedia article). If the AI fails to add a surviving authoritative outbound link, THIS is appended as a 'Source:' line so every post has one. '' = rely on the AI only.
 const BLOG_WORDS          = '900-1300';   // article length target
-const BLOG_CATEGORY       = '';      // optional blog category name to file every post under ('' = none)
+const BLOG_CATEGORY       = '';      // optional blog category name to file every post under ('' = none). Ignored when BLOG_AUTO_CATEGORIES is on.
+const BLOG_AUTO_CATEGORIES = true;   // group posts into a SMALL fixed set of topical blog categories (AI picks the set ONCE) and file each post under the best fit. Tags are intentionally NOT added — single-use tags cause thin-content/index bloat and hurt SEO
+const BLOG_CATEGORY_COUNT  = 7;      // HARD CAP on how many blog categories exist — the AI must reuse this set, never invent one per post
 const BLOG_LAYOUT         = 'no-sidebar';   // Flatsome blog layout (verified theme keys). 'no-sidebar' = clean full-width posts (recommended, stops the category-widget sidebar pushing content) | 'right-sidebar' | 'left-sidebar' | '' = leave your current setting untouched
 const REPAIR_POST_LINKS   = false;   // MAINTENANCE MODE: re-scan every existing post and remove any internal link that points to a NOT-YET-PUBLISHED post (the 404 case), then re-top-up. No AI, no new posts. Turn every DO_*/FORCE_*/REMOVE_* off to run this alone. Set back to false after.
 const OVERWRITE_PAGES = true;                 // legal/info pages: overwrite if they already have content
@@ -149,11 +152,11 @@ const OVERWRITE_PAGES = true;                 // legal/info pages: overwrite if 
 // ---- BRANDING (site identity: name, colors, logo — the "Appearance > Customize" bits) ----------------
 const ENSURE_SEARCH_VISIBLE = true;   // force "Search engine visibility" ON (blog_public=1) every run. Restored/migrated/staging sites often silently carry the "Discourage search engines" flag, which noindexes the WHOLE site so nothing indexes no matter how many sitemaps you submit. Leave ON.
 const DO_BRANDING       = true;   // set the site title, an AI-chosen color palette, and a generated logo (icon + brand name)
-const BRANDING_OVERWRITE= false;   // false = set each item ONLY where the site hasn't been branded yet (safe). true = force name/colors/logo every run
+const BRANDING_OVERWRITE= true;   // false = set each item ONLY where the site hasn't been branded yet (safe). true = force name/colors/logo every run
 const SITE_TAGLINE      = '';      // '' = keep the current tagline  (the site TITLE is always BRAND_NAME — no separate setting)
 const LOGO_BG           = '#ffffff';   // logo canvas background. White blends with Flatsome's near-white header. Use a dark hex ONLY if your header is dark
 const LOGO_URL          = '';      // OPTIONAL: paste a PUBLIC/live logo image URL (png/jpg) to USE that as the logo (downloaded into the media library once). Overrides generation. Also used by USE_LOGO_AS_PRODUCT_IMAGE
-const GENERATE_LOGO     = true;    // when LOGO_URL is empty: true = build a logo with the TEXT AI (writes an SVG icon) + a code-drawn wordmark, with a monogram-badge fallback — NO image API needed; false = don't create a logo at all
+const GENERATE_LOGO     = false;    // when LOGO_URL is empty: true = build a logo with the TEXT AI (writes an SVG icon) + a code-drawn wordmark, with a monogram-badge fallback — NO image API needed; false = don't create a logo at all
 
 // ---- Compliance + anti-AI voice --------------------------------------------
 const COMPLIANCE_MODE = true;
@@ -555,8 +558,10 @@ function generate_logo($palette){ $icon='';
     if($icon==='') $icon=monogram_icon($palette);            // ...otherwise a guaranteed code-drawn monogram badge
     if($icon==='') return [null,'could not build a logo icon'];
     $out=wp_upload_dir(); $dir=trailingslashit($out['path']); $file=$dir.'wcm-logo-'.substr(md5(brand().microtime()),0,8).'.png';
-    $ok=compose_logo($icon,$file,brand(),tagline(),$palette); @unlink($icon);
-    if(!$ok) return [null,'logo compose failed (no usable system font for the wordmark)'];
+    $ok=compose_logo($icon,$file,brand(),tagline(),$palette);   // icon + brand-name wordmark (needs Imagick or a TTF font)
+    if(!$ok) $ok=@copy($icon,$file);   // FALLBACK: no Imagick/usable font for the wordmark -> use the monogram badge ALONE as the logo (it always renders, even via GD's built-in font) so a logo is ALWAYS produced
+    @unlink($icon);
+    if(!$ok || !@file_exists($file)) return [null,'could not write a logo image (GD/Imagick unavailable or uploads not writable)'];
     return [trailingslashit($out['url']).basename($file),$file]; }
 // composite icon + name (+tagline) onto a LOGO_BG canvas. Imagick preferred, GD fallback.
 function compose_logo($iconPath,$outPath,$name,$tagline,$palette){ $font=overlay_font();
@@ -649,11 +654,11 @@ function blog_count_internal($html){ $n=0; foreach(existing_hrefs($html) as $u){
 function blog_href_key($u){ $u=trim((string)$u); $pp=parse_url($u); $path=isset($pp['path'])?$pp['path']:$u; $k=rtrim(strtolower((string)$path),'/'); return $k===''?'/':$k; }
 // Always-live, non-blog link targets (shop, categories, products, contact, homepage). Memoized — these never depend on the schedule.
 function blog_static_pool(){ static $p=null; if($p!==null) return $p; $raw=[];
-    $raw[]=['url'=>shop_url(),'name'=>'our full catalog']; $raw[]=['url'=>home_url('/'),'name'=>brand()];
-    foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false,'number'=>20]) as $t){ if(is_wp_error($t)||strtolower($t->slug)==='uncategorized') continue; $u=get_term_link($t); if(!is_wp_error($u)) $raw[]=['url'=>$u,'name'=>$t->name]; }
-    foreach(get_posts(['post_type'=>'product','post_status'=>'publish','numberposts'=>30,'orderby'=>'ID','order'=>'ASC']) as $po){ $raw[]=['url'=>get_permalink($po),'name'=>get_the_title($po)]; }   // full objects prime the post cache -> get_permalink/get_the_title are cache hits
-    $cp=get_page_by_path('contact-us'); if($cp) $raw[]=['url'=>get_permalink($cp->ID),'name'=>'contact us'];
-    $seen=[]; $p=[]; foreach($raw as $r){ $u=site_link($r['url']); if(!$u||is_wp_error($u)||isset($seen[$u])) continue; $seen[$u]=1; $p[]=['url'=>$u,'name'=>$r['name']]; } return $p; }
+    $raw[]=['url'=>shop_url(),'name'=>'our full catalog','money'=>1,'kind'=>'shop']; $raw[]=['url'=>home_url('/'),'name'=>brand(),'kind'=>'home'];
+    foreach(get_terms(['taxonomy'=>'product_cat','hide_empty'=>false,'number'=>20]) as $t){ if(is_wp_error($t)||strtolower($t->slug)==='uncategorized') continue; $u=get_term_link($t); if(!is_wp_error($u)) $raw[]=['url'=>$u,'name'=>$t->name,'money'=>1,'kind'=>'category']; }
+    foreach(get_posts(['post_type'=>'product','post_status'=>'publish','numberposts'=>30,'orderby'=>'ID','order'=>'ASC']) as $po){ $raw[]=['url'=>get_permalink($po),'name'=>get_the_title($po),'money'=>1,'kind'=>'product']; }   // full objects prime the post cache -> get_permalink/get_the_title are cache hits
+    $cp=get_page_by_path('contact-us'); if($cp) $raw[]=['url'=>get_permalink($cp->ID),'name'=>'contact us','kind'=>'page'];
+    $seen=[]; $p=[]; foreach($raw as $r){ $u=site_link($r['url']); if(!$u||is_wp_error($u)||isset($seen[$u])) continue; $seen[$u]=1; $p[]=['url'=>$u,'name'=>$r['name'],'money'=>!empty($r['money']),'kind'=>$r['kind']??'page']; } return $p; }   // 'kind' = product|category|shop|home|page — lets the menu PRIORITISE products over categories/shop
 // Every known blog post (publish + future) with its LOCAL publish date string. Seeds once from the DB, then accumulates posts we create this run (call with $add) so later posts can link back to earlier ones in the SAME batch.
 function blog_known_posts($add=null){ static $l=null;
     if($l===null){ $l=[]; foreach(get_posts(['post_type'=>'post','post_status'=>array('publish','future'),'numberposts'=>-1,'orderby'=>'date','order'=>'ASC']) as $po){ $u=site_link(post_pretty_link($po)); if($u&&!is_wp_error($u)) $l[]=['url'=>$u,'name'=>get_the_title($po),'date'=>(string)$po->post_date]; } }   // pretty URL even for future posts (not ?p=ID)
@@ -691,27 +696,49 @@ function blog_filter_links($html,$cut){ if(strpos((string)$html,'<a')===false) r
 function blog_link_menu($idx,$cut){ if((int)BLOG_INTERNAL_LINKS<=0) return [];   // 0 = user wants no internal links; don't suggest any
     $posts=[]; foreach(blog_known_posts() as $b){ if(strcmp((string)$b['date'],(string)$cut)<=0) $posts[]=['url'=>$b['url'],'name'=>$b['name'],'date'=>$b['date']]; }   // sibling posts already live by $cut
     usort($posts,fn($a,$b)=>strcmp((string)$a['date'],(string)$b['date']));         // force chronological order (a manual delete+recreate could seed the list out of order) so "newest first" below is always correct
-    $static=blog_static_pool(); $np=count($posts); $ns=count($static); $k=min((int)BLOG_INTERNAL_LINKS+1,$np+$ns); if($k<=0) return [];   // menu size tracks BLOG_INTERNAL_LINKS (was hardcoded 6, which over-fed the AI)
-    $out=[]; $seen=[]; $wantPosts=min($np,(int)ceil($k/2));                          // reserve about half (rounded up) of the menu for sibling posts, which used to sit at the tail of the pool and were almost never offered
-    for($i=$np-1;$i>=0 && count($out)<$wantPosts;$i--){ if(isset($seen[$posts[$i]['url']])) continue; $seen[$posts[$i]['url']]=1; $out[]=$posts[$i]; }   // newest sibling posts first (most topically relevant backward links)
-    for($i=0;$i<$ns && count($out)<$k;$i++){ $x=$static[($idx*3+$i)%$ns]; if(isset($seen[$x['url']])) continue; $seen[$x['url']]=1; $out[]=$x; }   // fill with shop/categories/products, rotated by post index so posts vary
-    for($i=$np-1;$i>=0 && count($out)<$k;$i--){ if(isset($seen[$posts[$i]['url']])) continue; $seen[$posts[$i]['url']]=1; $out[]=$posts[$i]; }   // backfill leftover slots from remaining siblings (e.g. a very small static pool) so the menu is never short when material exists
+    $static=blog_static_pool();
+    $products=array_values(array_filter($static,fn($r)=>($r['kind']??'')==='product'));   // PRODUCTS = the priority (specific money pages that rank + convert)
+    $cats=array_values(array_filter($static,fn($r)=>($r['kind']??'')==='category'));       // categories = 1 only
+    $fallback=array_values(array_filter($static,fn($r)=>!in_array($r['kind']??'',['product','category'],true)));   // shop / home / contact — last resort
+    $np=count($posts); $nprod=count($products); $ncat=count($cats); $k=min((int)BLOG_INTERNAL_LINKS+1,$np+count($static)); if($k<=0) return [];
+    $out=[]; $seen=[]; $push=function($x)use(&$out,&$seen,$k){ if(count($out)>=$k||!is_array($x)||isset($seen[$x['url']])) return; $seen[$x['url']]=1; $out[]=['url'=>$x['url'],'name'=>$x['name']]; };
+    $wantProd=min($nprod,max(2,$k-3));   // PRODUCTS get the majority — reserve ~3 slots for one category + up to two siblings
+    for($i=0,$c=0;$i<$nprod && $c<$wantProd;$i++){ $b=count($out); $push($products[($idx*3+$i)%$nprod]); if(count($out)>$b) $c++; }   // rotate so different posts feature different products
+    if($ncat) $push($cats[$idx%$ncat]);   // exactly ONE category (rotated by post index)
+    for($i=$np-1,$c=0;$i>=0 && $c<2;$i--){ $b=count($out); $push($posts[$i]); if(count($out)>$b) $c++; }   // 1-2 newest sibling posts for topical clustering
+    foreach($products as $x){ if(count($out)>=$k) break; $push($x); }                 // fill leftover slots with MORE products first,
+    foreach($posts as $x){ if(count($out)>=$k) break; $push($x); }                     // then more siblings,
+    foreach(array_merge($cats,$fallback) as $x){ if(count($out)>=$k) break; $push($x); }   // then extra categories / shop / home as a last resort
     return $out; }
-function blog_topup_links($html,$target,$cut){ $target=(int)$target; if($target<=0) return $html; $cur=blog_count_internal($html); if($cur>=$target) return $html;
-    $have=[]; foreach(existing_hrefs($html) as $u){ $have[rtrim((string)$u,'/')]=1; } $need=$target-$cur; $li='';
-    $sib=[]; foreach(blog_known_posts() as $b){ if(strcmp((string)$b['date'],(string)$cut)<=0) $sib[]=['url'=>$b['url'],'name'=>$b['name']]; } $sib=array_reverse($sib);   // sibling posts (newest first) BEFORE products/categories, so the deterministic top-up grows post-to-post linking too, not only product links
-    foreach(array_merge($sib,blog_static_pool()) as $r){ if($need<=0) break; $ru=rtrim((string)$r['url'],'/'); if(isset($have[$ru])) continue; $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; $have[$ru]=1; $need--; }
+// Deterministic SAFETY NET: if the model didn't weave the full mix in-context, top up ONLY the MISSING part of the target
+// mix (products-heavy, exactly 1 category, up to 2 EARLIER articles). In-context model links are the SEO-best form; this
+// bottom list just fills what's absent so a post is never left short of products / category / earlier-article links.
+function blog_topup_links($html,$target,$cut){ $target=(int)$target; if($target<=0) return $html;
+    $static=blog_static_pool();
+    $products=array_values(array_filter($static,fn($r)=>($r['kind']??'')==='product'));
+    $cats=array_values(array_filter($static,fn($r)=>($r['kind']??'')==='category'));
+    $arts=[]; foreach(blog_known_posts() as $b){ if(strcmp((string)$b['date'],(string)$cut)<=0) $arts[]=['url'=>$b['url'],'name'=>$b['name'],'date'=>$b['date']]; } usort($arts,fn($a,$b)=>strcmp((string)$b['date'],(string)$a['date']));   // EARLIER posts only, sorted NEWEST-first (usort, matching the menu) — never a not-yet-published one, so no 404
+    $tArt=min($target>=6?2:1,count($arts)); $tCat=1; $tProd=max(1,$target-$tCat-$tArt);   // target mix: products-heavy, 1 category, up to 2 earlier articles
+    $have=[]; foreach(existing_hrefs($html) as $u){ $have[blog_href_key($u)]=1; }
+    $cnt=function($list)use($have){ $n=0; foreach($list as $r){ if(isset($have[blog_href_key($r['url'])])) $n++; } return $n; };
+    $nP=max(0,$tProd-$cnt($products)); $nC=max(0,$tCat-$cnt($cats)); $nA=max(0,$tArt-$cnt($arts));
+    if($nP+$nC+$nA<=0) return $html;   // the model already wove the full mix in-context (the ideal, strongest-SEO outcome) -> add nothing
+    $li=''; $fill=function($list,$n)use(&$li,&$have){ foreach($list as $r){ if($n<=0) break; $k=blog_href_key($r['url']); if(isset($have[$k])) continue; $li.='<li><a href="'.esc_url($r['url']).'">'.esc($r['name']).'</a></li>'; $have[$k]=1; $n--; } };
+    $fill($products,$nP); $fill($cats,$nC); $fill($arts,$nA);
     return $li==='' ? $html : $html."\n<h2>Explore more</h2>\n<ul>$li</ul>"; }
 function blog_article_prompt($ti,$idx,$cut){ $links=''; foreach(blog_link_menu($idx,$cut) as $m){ $links.='  - '.$m['name'].': '.$m['url']."\n"; }
     $ext = BLOG_EXTERNAL_LINK
-        ? "OUTBOUND LINK: include EXACTLY ONE outbound link, and add one to almost every article where it fits. Use ONLY an authoritative, non-commercial source: a .gov, .mil, .edu or .int page (prefer nih.gov, pubmed.ncbi.nlm.nih.gov, fda.gov, cdc.gov, clinicaltrials.gov, medlineplus.gov, who.int), or a well-known public-reference page (en.wikipedia.org). NEVER link to a store, brand, blog, marketplace, competitor or any commercial business — commercial links are automatically stripped out and would simply vanish. Only omit the outbound link if genuinely nothing relevant exists.\n"
+        ? "OUTBOUND LINK (REQUIRED — EVERY article must have exactly ONE): add ONE in-context outbound link to an authoritative NON-commercial source. Best: a .gov/.mil/.edu/.int page (nih.gov, pubmed.ncbi.nlm.nih.gov, fda.gov, cdc.gov, clinicaltrials.gov, medlineplus.gov, who.int). If no government/edu page fits, link the most relevant en.wikipedia.org article — there is almost ALWAYS a relevant Wikipedia article, so use it rather than skipping. NEVER link to a store, brand, blog, competitor or any commercial (.com/.org business) site — those are automatically stripped out and vanish. Do NOT skip this link.\n"
         : "Do not add any outbound external links.\n";
+    $catclause=''; $catkey='';
+    if(BLOG_AUTO_CATEGORIES){ $bc=json_decode((string)get_option('wcm_blog_cats'),true); if(is_array($bc)&&$bc){ $catclause="CATEGORY: pick EXACTLY ONE category from this list that best fits the article — do NOT invent a new one: ".implode(', ',$bc).".\n"; $catkey=",\"category\":\"exactly one from the list above\""; } }
     return "Write a ".BLOG_WORDS." word SEO blog article titled \"$ti\" for ".brand().", which sells ".STORE_NICHE.". Write for real buyers and to rank in Google. "
         .voice_rules().compliance_clause()
-        ."STRUCTURE: valid HTML only — ONE <h1> (the title), then <h2>/<h3> sections, short scannable paragraphs, at least one <ul> list, and a short FAQ of 2-3 <h3> questions with answers.\n"
-        ."INTERNAL LINKS: weave about ".BLOG_INTERNAL_LINKS." natural, in-context <a> links (NOT a link dump) to these pages of OUR OWN site, using the EXACT URLs shown, only where they genuinely fit — and prefer linking to our other blog posts in the list when relevant:\n".($links?:"  (none available yet)\n")
+        ."SEO — follow ALL of this: choose ONE primary keyword this article targets (the core topic of the title). Put that keyword in the <h1>, in the FIRST sentence of the intro, in at least one <h2>, and naturally 3-5 more times in the body (no keyword stuffing). Return that EXACT phrase as focus_keyword. meta_title: 55-60 chars, LEADS with the primary keyword, compelling to click. meta_description: 150-160 chars, includes the keyword and a reason to click. Answer real buyer questions and cover the topic thoroughly so it earns the ranking.\n"
+        ."STRUCTURE: valid HTML only — ONE <h1> (the title), then <h2>/<h3> sections, short scannable paragraphs, at least one <ul> list, and a short FAQ of 2-3 <h3> questions with answers.\n".$catclause
+        ."INTERNAL LINKS — IMPORTANT, do NOT skip any type. Weave links INSIDE your sentences (in-context, with descriptive keyword anchor text, NOT a list at the end, NEVER 'click here'), using ONLY the EXACT URLs below. Include, in this order of priority: 3 links to relevant PRODUCTS, 1 link to a relevant CATEGORY, and 2 links to our EARLIER blog posts from the list (link to a blog post ONLY if one is listed below — the earliest articles simply have fewer to link to). Products first; at most ONE category; never more blog posts than products:\n".($links?:"  (none available yet)\n")
         .$ext.html_quote_rule()
-        ."Return JSON: {\"content\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"}"; }
+        ."Return JSON: {\"content\":\"<html>\",\"meta_title\":\"...\",\"meta_description\":\"...\",\"focus_keyword\":\"...\"".$catkey."}"; }
 
 // ---------------------------------------------------------------------------
 // Reference store (optional) — fetched ONCE, gives the AI a real market anchor
@@ -924,9 +951,13 @@ foreach($P as $pid=>$d){ if(isset($primary[$pid])) continue; $tt=get_the_terms($
     $primary[$pid]=(is_array($tt)&&$tt)?(int)$tt[0]->term_id:0; }
 // interlink groups by primary term
 $groups=[]; foreach($primary as $pid=>$tid){ $groups[$tid][]=$pid; }
-function related_of($pid,$primary,$groups,$P){ $out=[]; foreach(($groups[$primary[$pid]]??[]) as $o){ if($o==$pid) continue;
-    if(($P[$o]['status']??'')!=='publish') continue;   // only link to publicly visible products (skip draft/pending/private)
-    $out[]=['name'=>$P[$o]['title'],'url'=>site_link(get_permalink($o))]; if(count($out)>=INTERLINKS_PER_PRODUCT) break; } return $out; }
+function related_of($pid,$primary,$groups,$P){ $out=[]; $seen=[$pid=>1];
+    foreach(($groups[$primary[$pid]]??[]) as $o){ if(isset($seen[$o])||($P[$o]['status']??'')!=='publish') continue;   // same-category siblings first (most relevant)
+        $seen[$o]=1; $out[]=['name'=>$P[$o]['title'],'url'=>site_link(get_permalink($o))]; if(count($out)>=INTERLINKS_PER_PRODUCT) return $out; }
+    $keys=array_keys($P); $nk=count($keys); $start=$nk?($pid%$nk):0;   // FALLBACK rotates its start by product id so link equity spreads across the catalog instead of piling onto the first few products
+    for($j=0;$j<$nk && count($out)<INTERLINKS_PER_PRODUCT;$j++){ $o=$keys[($start+$j)%$nk]; if(isset($seen[$o])||($P[$o]['status']??'')!=='publish') continue;   // too few same-category siblings -> fill from other published products so EVERY product still gets interlinks
+        $seen[$o]=1; $out[]=['name'=>$P[$o]['title'],'url'=>site_link(get_permalink($o))]; }
+    return $out; }
 
 // ---- PHASE: PRODUCTS -------------------------------------------------------
 $batched=false; $processed=0; $aborted=false; $products_complete=true; $left=0;   // default TRUE so a run that intentionally skips the product phase (pages-only / REPAIR_POST_LINKS / branding-only maintenance) still counts as complete and can self-delete + re-arm RESET; the product block below sets the REAL value when it runs
@@ -1146,7 +1177,7 @@ if(!$batched){
         else { out("\n--- Blog (".BLOG_COUNT." posts: #1 live, rest every ".max(1,(int)BLOG_CADENCE_DAYS)." day(s)) ---",'#6cf');
             $titles=json_decode((string)get_option('wcm_blog_titles'),true);   // reuse the saved list across resumes so schedule slots stay put
             if(!is_array($titles) || !$titles){
-                [$td]=ai_json("Suggest exactly ".BLOG_COUNT." distinct, SEO-friendly blog article titles for ".brand()." selling ".STORE_NICHE.", aimed at buyers and search traffic. No numbering. Return JSON: {\"titles\":[\"...\"]} — no comments, no trailing commas.");
+                [$td]=ai_json("Suggest exactly ".BLOG_COUNT." blog article titles for ".brand()." selling ".STORE_NICHE.". Each title must target a DISTINCT long-tail search keyword with NO overlap between titles (avoid keyword cannibalization). Front-load the keyword and keep titles specific and compelling. Use a HEALTHY MIX for topical authority: mostly informational/educational topics (how-to, guides, explainers, common buyer questions — these rank and earn links most easily) PLUS some commercial-intent topics (comparisons, 'best', 'how to choose', buying guides). Every topic must be relevant to the niche so it can link naturally to our products. No numbering. Return JSON: {\"titles\":[\"...\"]} — no comments, no trailing commas.");
                 $titles=(is_array($td)&&!empty($td['titles']))?array_values(array_unique(array_filter(array_map(fn($x)=>trim((string)$x),(array)$td['titles'])))):[];
                 $titles=array_slice($titles,0,BLOG_COUNT);
                 if($titles) update_option('wcm_blog_titles',wp_json_encode($titles),false); }
@@ -1155,6 +1186,13 @@ if(!$batched){
                 $now=current_time('timestamp'); $base=(int)get_option('wcm_blog_start'); if($base<=0){ $base=$now; update_option('wcm_blog_start',$base,false); }   // fixed anchor date for the whole schedule
                 $cad=max(1,(int)BLOG_CADENCE_DAYS); $cap=BLOG_PER_RUN>0?(int)BLOG_PER_RUN:PHP_INT_MAX;
                 $cat_id=0; if(BLOG_CATEGORY!==''){ $bt=get_term_by('name',BLOG_CATEGORY,'category'); if($bt&&!is_wp_error($bt)) $cat_id=(int)$bt->term_id; else { $ins=wp_insert_term(BLOG_CATEGORY,'category'); if(!is_wp_error($ins)) $cat_id=(int)$ins['term_id']; } }
+                $blogcat_ids=[];   // BLOG_AUTO_CATEGORIES: a SMALL fixed set of topical blog categories, built ONCE (capped at BLOG_CATEGORY_COUNT) and reused; each post is filed under the best fit. No tags (they cause thin-content bloat).
+                if(BLOG_AUTO_CATEGORIES){ $blogcats=json_decode((string)get_option('wcm_blog_cats'),true);
+                    if(!is_array($blogcats)||!$blogcats){ [$bc]=ai_json("Suggest between 3 and ".max(3,(int)BLOG_CATEGORY_COUNT)." BROAD, reusable blog category names for ".brand()."'s blog about ".STORE_NICHE.". Each must be broad enough to hold MANY articles — never one category per article. Return JSON: {\"categories\":[\"...\"]} — no comments, no trailing commas.");
+                        $blogcats=(is_array($bc)&&!empty($bc['categories']))?array_slice(array_values(array_unique(array_filter(array_map(fn($x)=>trim((string)$x),(array)$bc['categories'])))),0,max(1,(int)BLOG_CATEGORY_COUNT)):[];   // max(1,...) so a misconfigured 0 can't empty the set and re-fire the AI call every refresh
+                        if($blogcats) update_option('wcm_blog_cats',wp_json_encode($blogcats),false); }
+                    foreach((array)$blogcats as $cn){ $cn=trim((string)$cn); if($cn==='') continue; $bt=get_term_by('name',$cn,'category'); if($bt&&!is_wp_error($bt)) $blogcat_ids[$cn]=(int)$bt->term_id; else { $ins=wp_insert_term($cn,'category'); if(!is_wp_error($ins)) $blogcat_ids[$cn]=(int)$ins['term_id']; } }
+                    if($blogcat_ids) out('   blog categories ('.count($blogcat_ids).'): '.implode(', ',array_keys($blogcat_ids)),'#6cf'); }
                 $made=0; $fail=0;
                 $existing=array_flip($wpdb->get_col("SELECT post_title FROM {$wpdb->posts} WHERE post_type='post' AND post_status<>'trash'"));   // ONE query for all existing post titles -> O(1) dedup per title instead of a full-table title scan on every title
                 foreach($wpdb->get_col("SELECT meta_value FROM {$wpdb->postmeta} WHERE meta_key='_wcm_blog_title'") as $bk){ $existing[$bk]=1; }   // primary done-marker: the EXACT original title we stamped on each created post. Immune to WP re-encoding the stored post_title (naked '&' -> '&amp;' etc.), which would otherwise miss the match and re-create the post
@@ -1173,9 +1211,13 @@ if(!$batched){
                     $html=dedash($html);
                     [$html,$extk]=blog_filter_links($html,$dl);          // drop business/competitor links + any internal link not live by $dl; keep at most one authoritative source
                     $html=blog_topup_links($html,(int)BLOG_INTERNAL_LINKS,$dl);
+                    if(BLOG_EXTERNAL_LINK && !$extk && BLOG_EXTERNAL_URL!==''){ $eh=preg_replace('/^www\./','',(string)parse_url(BLOG_EXTERNAL_URL,PHP_URL_HOST)); $html.="\n<p><em>Source: <a href=\"".esc_url(BLOG_EXTERNAL_URL)."\">".esc($eh?:'authoritative source')."</a></em></p>"; $extk=true; }   // deterministic external: only when the AI's authoritative outbound was missing/stripped
                     $html=append_disclaimer($html);
                     $args=['post_type'=>'post','post_title'=>$ti,'post_status'=>$status,'post_content'=>$html,'post_date'=>$dl,'post_date_gmt'=>get_gmt_from_date($dl)];
-                    if($cat_id) $args['post_category']=[$cat_id];
+                    $post_cat=0;
+                    if(BLOG_AUTO_CATEGORIES && $blogcat_ids){ $pc=strtolower(trim((string)($d['category']??''))); foreach($blogcat_ids as $nm=>$tid){ if(strtolower($nm)===$pc){ $post_cat=$tid; break; } } if(!$post_cat) $post_cat=reset($blogcat_ids); }   // file under the AI-chosen category from the fixed set; fall back to the first if its pick isn't in the set (so it can NEVER create a new category)
+                    elseif($cat_id) $post_cat=$cat_id;
+                    if($post_cat) $args['post_category']=[$post_cat];
                     $post=wp_insert_post($args,true);
                     if(is_wp_error($post)){ out("   [skip] $ti — ".$post->get_error_message(),'#f66'); continue; }
                     update_post_meta($post,'_wcm_blog_title',$ti);   // stamp the EXACT original title as the done-marker so this post is never re-created on a later batch/refresh, regardless of how WP stored post_title
@@ -1183,6 +1225,7 @@ if(!$batched){
                     if(!empty($d['meta_title'])) update_post_meta($post,'rank_math_title',mb_substr((string)$d['meta_title'],0,70));
                     if(!empty($d['meta_description'])) update_post_meta($post,'rank_math_description',mb_substr((string)$d['meta_description'],0,160));
                     if(!empty($d['focus_keyword'])) update_post_meta($post,'rank_math_focus_keyword',(string)$d['focus_keyword']);
+                    update_post_meta($post,'rank_math_rich_snippet','article'); update_post_meta($post,'rank_math_snippet_article_type','BlogPosting');   // emit Article/BlogPosting schema (rich results) — the SAFE meta way; never write rank_math_schema_* as a JSON string (that fatals blog pages)
                     $made++; $existing[$ti]=1; $when_tag=$due?('live '.date('M j',$when)):('scheduled '.date('M j, Y',$when));
                     out("   [ok] $ti — $when_tag".($extk?' + authoritative link':''),'#6f6'); }
                 if(!$blog_incomplete){
